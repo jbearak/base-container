@@ -1,0 +1,4 @@
+options(menu.graphics=FALSE)
+if (.Platform$OS.type == "unix" && (interactive() || isatty(stdout()))) {
+    try(library("colorout"))
+}

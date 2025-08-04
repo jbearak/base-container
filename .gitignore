@@ -1,0 +1,10 @@
+renv.lock
+*.log
+*.tar
+/refs.bib
+/test.docx
+/test.md
+/test.pdf
+/test_cite.pdf
+/crossref_test.md
+/crossref_test.pdf

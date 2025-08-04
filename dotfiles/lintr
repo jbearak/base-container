@@ -1,0 +1,9 @@
+linters: linters_with_defaults(
+    line_length_linter(80),
+    commented_code_linter(),
+    object_length_linter(40),
+    indentation_linter(4),
+    object_name_linter("^[a-z][a-z0-9_]*(\\.([a-z][a-z0-9_]*))*$")
+)
+
+
