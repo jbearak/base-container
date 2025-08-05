@@ -133,11 +133,38 @@ RUN set -e; \
       arm64) HDL_ARCH="arm64" ;; \
       *) echo "Unsupported arch for hadolint: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
     esac; \
-    HDL_VERSION=$(curl -s https://api.github.com/repos/hadolint/hadolint/releases/latest | grep 'tag_name' | cut -d '"' -f4); \
-    HDL_URL="https://github.com/hadolint/hadolint/releases/download/${HDL_VERSION}/hadolint-Linux-${HDL_ARCH}"; \
-    echo "Installing hadolint from ${HDL_URL}"; \
-    curl -fsSL "$HDL_URL" -o /usr/local/bin/hadolint; \
+    # Get latest release info from GitHub API
+    RELEASE_INFO=$(curl -s https://api.github.com/repos/hadolint/hadolint/releases/latest); \
+    HDL_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing hadolint version: ${HDL_VERSION}"; \
+    # Construct URLs for binary and checksum
+    HDL_BINARY_URL="https://github.com/hadolint/hadolint/releases/download/${HDL_VERSION}/hadolint-Linux-${HDL_ARCH}"; \
+    HDL_CHECKSUM_URL="https://github.com/hadolint/hadolint/releases/download/${HDL_VERSION}/hadolint-Linux-${HDL_ARCH}.sha256"; \
+    echo "Downloading hadolint binary from: ${HDL_BINARY_URL}"; \
+    echo "Downloading hadolint checksum from: ${HDL_CHECKSUM_URL}"; \
+    # Download binary and checksum
+    curl -fsSL "$HDL_BINARY_URL" -o /tmp/hadolint; \
+    curl -fsSL "$HDL_CHECKSUM_URL" -o /tmp/hadolint.sha256; \
+    # Extract expected checksum from the checksum file
+    EXPECTED_SHA256=$(cut -d' ' -f1 /tmp/hadolint.sha256); \
+    echo "Expected SHA256: ${EXPECTED_SHA256}"; \
+    # Calculate actual checksum of downloaded binary
+    ACTUAL_SHA256=$(sha256sum /tmp/hadolint | cut -d' ' -f1); \
+    echo "Actual SHA256: ${ACTUAL_SHA256}"; \
+    # Verify checksums match
+    if [ "$EXPECTED_SHA256" = "$ACTUAL_SHA256" ]; then \
+        echo "✅ SHA256 checksum verification successful"; \
+    else \
+        echo "❌ SHA256 checksum verification failed!"; \
+        echo "Expected: ${EXPECTED_SHA256}"; \
+        echo "Actual: ${ACTUAL_SHA256}"; \
+        exit 1; \
+    fi; \
+    # Install the verified binary
+    mv /tmp/hadolint /usr/local/bin/hadolint; \
     chmod +x /usr/local/bin/hadolint; \
+    rm /tmp/hadolint.sha256; \
+    # Verify installation
     hadolint --version
 # ---------------------------------------------------------------------------
 # Install eza (modern replacement for ls) using official Debian/Ubuntu repo
