@@ -9,6 +9,8 @@ CONTAINER_NAME="dev-container"
 IMAGE_TAG="latest"
 BUILD_TARGET="full" # Default to full build
 DEBUG_MODE=""
+CACHE_REGISTRY=""
+CACHE_MODE=""
 
 # Helpers to reduce duplication in docker run checks
 run_in_container() {
@@ -131,6 +133,24 @@ while [[ $# -gt 0 ]]; do
     NO_CACHE="--no-cache"
     shift
     ;;
+  --cache-from)
+    CACHE_REGISTRY="$2"
+    CACHE_MODE="--cache-from type=registry,ref=${CACHE_REGISTRY}/cache"
+    echo "🗂️  Using registry cache from: ${CACHE_REGISTRY}/cache"
+    shift 2
+    ;;
+  --cache-to)
+    CACHE_REGISTRY="$2"
+    CACHE_MODE="--cache-to type=registry,ref=${CACHE_REGISTRY}/cache,mode=max"
+    echo "💾 Pushing cache to: ${CACHE_REGISTRY}/cache"
+    shift 2
+    ;;
+  --cache-from-to)
+    CACHE_REGISTRY="$2"
+    CACHE_MODE="--cache-from type=registry,ref=${CACHE_REGISTRY}/cache --cache-to type=registry,ref=${CACHE_REGISTRY}/cache,mode=max"
+    echo "🔄 Using and updating registry cache: ${CACHE_REGISTRY}/cache"
+    shift 2
+    ;;
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
@@ -147,6 +167,9 @@ while [[ $# -gt 0 ]]; do
     echo "  --debug                              Show verbose R package installation logs (default: quiet)"
     echo "  --test                               Run tests after building"
     echo "  --no-cache                           Build without using Docker cache"
+    echo "  --cache-from <registry>              Use registry cache from specified registry (e.g., ghcr.io/user/repo)"
+    echo "  --cache-to <registry>                Push cache to specified registry"
+    echo "  --cache-from-to <registry>           Use and update registry cache"
     echo "  -h, --help                           Show this help message"
     echo ""
     echo "Examples:"
@@ -154,6 +177,7 @@ while [[ $# -gt 0 ]]; do
     echo "  $0 --base-nvim                    # Build with nvim plugins installed"
     echo "  $0 --base-nvim-vscode --test      # Build with nvim + VS Code and test it"
     echo "  $0 --full --no-cache              # Full clean build"
+    echo "  $0 --full --cache-from-to ghcr.io/user/repo  # Use registry cache"
     exit 0
     ;;
   *)
@@ -165,7 +189,27 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "🏗️  Building dev container image (target: ${BUILD_TARGET})..."
-docker build ${NO_CACHE} ${DEBUG_MODE} --progress=plain --target "${BUILD_TARGET}" --build-arg BUILDKIT_INLINE_CACHE=1 -t "${CONTAINER_NAME}:${IMAGE_TAG}" .
+
+# Use target-specific cache keys for better cache isolation
+TARGET_CACHE_MODE=""
+if [ -n "$CACHE_REGISTRY" ]; then
+  if [[ "$CACHE_MODE" == *"--cache-from"* ]]; then
+    TARGET_CACHE_MODE="--cache-from type=registry,ref=${CACHE_REGISTRY}/cache:${BUILD_TARGET}"
+  fi
+  if [[ "$CACHE_MODE" == *"--cache-to"* ]]; then
+    TARGET_CACHE_MODE="${TARGET_CACHE_MODE} --cache-to type=registry,ref=${CACHE_REGISTRY}/cache:${BUILD_TARGET},mode=max"
+  fi
+else
+  TARGET_CACHE_MODE="$CACHE_MODE"
+fi
+
+# Use docker buildx for better caching support
+docker buildx build ${NO_CACHE} ${DEBUG_MODE} ${TARGET_CACHE_MODE} \
+  --progress=plain \
+  --target "${BUILD_TARGET}" \
+  --build-arg BUILDKIT_INLINE_CACHE=1 \
+  -t "${CONTAINER_NAME}:${IMAGE_TAG}" \
+  .
 
 echo "✅ Container built successfully!"
 

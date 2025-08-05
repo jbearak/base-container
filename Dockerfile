@@ -124,6 +124,22 @@ RUN apt-get update -qq && apt-get -y upgrade && \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
+# Install hadolint (Dockerfile linter) from GitHub releases
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) HDL_ARCH="x86_64" ;; \
+      arm64) HDL_ARCH="arm64" ;; \
+      *) echo "Unsupported arch for hadolint: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    HDL_VERSION=$(curl -s https://api.github.com/repos/hadolint/hadolint/releases/latest | grep 'tag_name' | cut -d '"' -f4); \
+    HDL_URL="https://github.com/hadolint/hadolint/releases/download/${HDL_VERSION}/hadolint-Linux-${HDL_ARCH}"; \
+    echo "Installing hadolint from ${HDL_URL}"; \
+    curl -fsSL "$HDL_URL" -o /usr/local/bin/hadolint; \
+    chmod +x /usr/local/bin/hadolint; \
+    hadolint --version
+# ---------------------------------------------------------------------------
 # Install eza (modern replacement for ls) using official Debian/Ubuntu repo
 # ---------------------------------------------------------------------------
 RUN set -e; \
