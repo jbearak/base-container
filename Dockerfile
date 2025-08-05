@@ -136,27 +136,43 @@ RUN set -e; \
     rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Install latest Go directly from official source
+# Install latest Go from official source (Ubuntu's version is outdated)
 # ---------------------------------------------------------------------------
-# Ubuntu's Go version is often outdated. Install latest stable Go from official source
-# This dynamically fetches the latest stable version instead of hardcoding it
-# ---------------------------------------------------------------------------
-RUN LATEST_GO_VERSION=$(curl -s "https://go.dev/VERSION?m=text" | head -n1) && \
-    curl -L "https://go.dev/dl/${LATEST_GO_VERSION}.linux-arm64.tar.gz" -o /tmp/go.tar.gz && \
-    rm -rf /usr/local/go && \
-    tar -C /usr/local -xzf /tmp/go.tar.gz && \
-    rm /tmp/go.tar.gz && \
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN set -e; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) GO_ARCH="amd64" ;; \
+      arm64) GO_ARCH="arm64" ;; \
+      *) echo "Unsupported arch for Go: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    LATEST_GO_VERSION="$(curl -fsSL "https://go.dev/VERSION?m=text" | head -n1)"; \
+    GO_URL="https://go.dev/dl/${LATEST_GO_VERSION}.linux-${GO_ARCH}.tar.gz"; \
+    echo "Installing Go ${LATEST_GO_VERSION} for ${GO_ARCH} from ${GO_URL}"; \
+    curl -fsSL "${GO_URL}" -o /tmp/go.tar.gz; \
+    rm -rf /usr/local/go; \
+    tar -C /usr/local -xzf /tmp/go.tar.gz; \
+    rm /tmp/go.tar.gz; \
     echo "Installed Go version: ${LATEST_GO_VERSION}"
 
 # Add Go to PATH for all users
 ENV PATH=$PATH:/usr/local/go/bin
 
 # ---------------------------------------------------------------------------
-# Install latest stable Neovim (ARM64) binary
+# Install latest stable Neovim binary
 # ---------------------------------------------------------------------------
-RUN curl -L "https://github.com/neovim/neovim/releases/latest/download/nvim-linux-arm64.tar.gz" -o /tmp/nvim.tar.gz \
-    && tar -xzf /tmp/nvim.tar.gz -C /usr/local --strip-components=1 \
-    && rm /tmp/nvim.tar.gz
+RUN set -e; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) NVIM_ARCH="x86_64" ;; \
+      arm64) NVIM_ARCH="arm64" ;; \
+      *) echo "Unsupported arch for Neovim: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    NVIM_URL="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-${NVIM_ARCH}.tar.gz"; \
+    echo "Installing Neovim from ${NVIM_URL}"; \
+    curl -fsSL "${NVIM_URL}" -o /tmp/nvim.tar.gz; \
+    tar -xzf /tmp/nvim.tar.gz -C /usr/local --strip-components=1; \
+    rm /tmp/nvim.tar.gz
 
 # ---------------------------------------------------------------------------
 # R installation from CRAN
@@ -369,17 +385,23 @@ FROM base-nvim AS base-nvim-vscode
 USER me
 
 # ---------------------------------------------------------------------------
-# VS Code Server Installation (ARM64)
+# VS Code Server Installation
 # ---------------------------------------------------------------------------
-# Download and install VS Code server for ARM64 architecture
-# We use the latest stable release directly from the update API
+# Download and install VS Code server for detected architecture using update API
 # ---------------------------------------------------------------------------
-RUN mkdir -p /home/me/.vscode-server/bin && \
-    # Download the latest stable VS Code server for ARM64
-    echo "Installing VS Code server (ARM64)..." && \
-    curl -L "https://update.code.visualstudio.com/latest/server-linux-arm64/stable" \
-        -o /tmp/vscode-server.tar.gz && \
-    tar -xzf /tmp/vscode-server.tar.gz -C /home/me/.vscode-server/bin --strip-components=1 && \
+RUN set -e; \
+    mkdir -p /home/me/.vscode-server/bin; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) VSCODE_ARCH="x64" ;; \
+      arm64) VSCODE_ARCH="arm64" ;; \
+      *) echo "Unsupported arch for VS Code Server: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    echo "Installing VS Code server (${VSCODE_ARCH})..."; \
+    VSCODE_URL="https://update.code.visualstudio.com/latest/server-linux-${VSCODE_ARCH}/stable"; \
+    echo "VS Code server URL: ${VSCODE_URL}"; \
+    curl -fsSL "${VSCODE_URL}" -o /tmp/vscode-server.tar.gz; \
+    tar -xzf /tmp/vscode-server.tar.gz -C /home/me/.vscode-server/bin --strip-components=1; \
     rm /tmp/vscode-server.tar.gz
 
 # ---------------------------------------------------------------------------
