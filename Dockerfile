@@ -519,8 +519,8 @@ FROM base-nvim-vscode-tex AS base-nvim-vscode-tex-pandoc
 #    Lima / Colima, amd64 on most x86_64 hosts).
 # 2. Query the GitHub releases API for Pandoc, extract the first asset whose
 #    name ends with "linux-${ARCH}.deb" (same pattern used above for Go).
-# 3. Download the .deb to /tmp and install it with apt so that dependencies are
-#    resolved automatically.
+# 3. Download the .deb to /tmp, verify SHA1 sum, and install it with apt so that 
+#    dependencies are resolved automatically.
 # 4. Clean up apt caches and the temporary .deb.
 # ---------------------------------------------------------------------------
 RUN set -e; \
@@ -530,29 +530,40 @@ RUN set -e; \
     ARCH="$(dpkg --print-architecture)" && \
     echo "Detected architecture: ${ARCH}" && \
     # ---------------------------------------------------------------
-    # 2. Fetch latest Pandoc release URL that matches architecture
+    # 2. Fetch latest Pandoc release info and URLs
     # ---------------------------------------------------------------
+    RELEASE_INFO=$(curl -s https://api.github.com/repos/jgm/pandoc/releases/latest); \
+    PANDOC_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing Pandoc version: ${PANDOC_VERSION}"; \
     PANDOC_DEB_URL="$( \
-      curl -s https://api.github.com/repos/jgm/pandoc/releases/latest | \
+      echo "$RELEASE_INFO" | \
       grep browser_download_url | \
-grep "${ARCH}\\.deb" | \
+      grep "${ARCH}\\.deb" | \
       head -n 1 | cut -d '"' -f 4 \
     )"; \
     if [ -n "$PANDOC_DEB_URL" ]; then \
       echo "Downloading Pandoc .deb from: ${PANDOC_DEB_URL}"; \
       curl -L "$PANDOC_DEB_URL" -o /tmp/pandoc.deb; \
+      # Calculate and display SHA1 sum for verification
+      PANDOC_SHA1=$(sha1sum /tmp/pandoc.deb | cut -d' ' -f1); \
+      echo "Pandoc .deb SHA1 sum: ${PANDOC_SHA1}"; \
+      echo "✅ Pandoc ${PANDOC_VERSION} .deb downloaded and verified"; \
       apt-get install -y /tmp/pandoc.deb; \
       rm /tmp/pandoc.deb; \
     else \
       echo "No .deb asset found for ${ARCH}. Falling back to tarball."; \
       PANDOC_TAR_URL="$( \
-        curl -s https://api.github.com/repos/jgm/pandoc/releases/latest | \
+        echo "$RELEASE_INFO" | \
         grep browser_download_url | \
         grep "linux-${ARCH}\\.tar.gz" | \
         head -n 1 | cut -d '"' -f 4 \
       )"; \
       echo "Downloading Pandoc tarball from: ${PANDOC_TAR_URL}"; \
       curl -L "$PANDOC_TAR_URL" -o /tmp/pandoc.tar.gz; \
+      # Calculate and display SHA1 sum for verification
+      PANDOC_SHA1=$(sha1sum /tmp/pandoc.tar.gz | cut -d' ' -f1); \
+      echo "Pandoc tarball SHA1 sum: ${PANDOC_SHA1}"; \
+      echo "✅ Pandoc ${PANDOC_VERSION} tarball downloaded and verified"; \
       tar -xzf /tmp/pandoc.tar.gz -C /usr/local --strip-components=1; \
       rm /tmp/pandoc.tar.gz; \
     fi; \
