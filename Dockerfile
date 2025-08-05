@@ -166,11 +166,24 @@ RUN set -e; \
     esac; \
     LATEST_GO_VERSION="$(curl -fsSL "https://go.dev/VERSION?m=text" | head -n1)"; \
     GO_URL="https://go.dev/dl/${LATEST_GO_VERSION}.linux-${GO_ARCH}.tar.gz"; \
+    GO_SIG_URL="https://go.dev/dl/${LATEST_GO_VERSION}.linux-${GO_ARCH}.tar.gz.asc"; \
     echo "Installing Go ${LATEST_GO_VERSION} for ${GO_ARCH} from ${GO_URL}"; \
+    # Download Go tarball and signature
     curl -fsSL "${GO_URL}" -o /tmp/go.tar.gz; \
+    curl -fsSL "${GO_SIG_URL}" -o /tmp/go.tar.gz.asc; \
+    # Import Go's official GPG key (Google's signing key for Go releases)
+    # Key ID: EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796
+    gpg --batch --keyserver keyserver.ubuntu.com --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796 || \
+    gpg --batch --keyserver keys.openpgp.org --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796 || \
+    gpg --batch --keyserver pgp.mit.edu --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796; \
+    # Verify the signature
+    echo "Verifying Go tarball signature..."; \
+    gpg --batch --verify /tmp/go.tar.gz.asc /tmp/go.tar.gz; \
+    echo "✅ Go tarball signature verified successfully"; \
+    # Install Go
     rm -rf /usr/local/go; \
     tar -C /usr/local -xzf /tmp/go.tar.gz; \
-    rm /tmp/go.tar.gz; \
+    rm /tmp/go.tar.gz /tmp/go.tar.gz.asc; \
     echo "Installed Go version: ${LATEST_GO_VERSION}"
 
 # Add Go to PATH for all users
