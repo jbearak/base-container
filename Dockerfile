@@ -9,9 +9,11 @@
 #             Stage 2 (base-nvim)          : Initialize and bootstrap Neovim plugins using lazy.nvim.
 #             Stage 3 (base-nvim-vscode)   : Setup VS Code server with pre-installed extensions.
 #             Stage 4 (base-nvim-vscode-tex): Add LaTeX tools for typesetting.
-#             Stage 5 (base-nvim-vscode-tex-pandoc): Add Pandoc and pandoc-crossref to support typsetting from markdown.
-#             Stage 6 (base-nvim-vscode-tex-pandoc-plus): Pandoc stage + extra LaTeX packages via tlmgr (e.g. soul)
-#             Stage 7 (full)               : Final stage; installs a comprehensive suite of R packages.
+#             Stage 5 (base-nvim-vscode-tex-pandoc): Add Pandoc to support typsetting from markdown.
+#             Stage 6 (base-nvim-vscode-tex-pandoc-haskell): Compile Haskell to compile pandoc-crossref.
+#             Stage 7 (base-nvim-vscode-tex-pandoc-haskell-crossref): Add pandoc-crossref for numbering figures, equations, tables.
+#             Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus): Add extra LaTeX packages via tlmgr (e.g. soul)
+#             Stage 9 (full)               : Final stage; installs a comprehensive suite of R packages.
 #
 # Why multi-stage?
 #   • Allows for quick debugging of specific components without rebuilding everything
@@ -531,16 +533,16 @@ RUN set -e; \
     rm -rf /var/lib/apt/lists/*
 
 # ===========================================================================
-# STAGE 5: PANDOC DOCUMENT CONVERSION             (base-nvim-vscode-tex-pandoc)
+# STAGE 5: PANDOC                              (base-nvim-vscode-tex-pandoc)
 # ===========================================================================
-# This stage adds Pandoc and pandoc-crossref so we can write most of a
-# paper in Markdown and convert it to PDF (via LaTeX) or Word.
+# This stage adds Pandoc so we can write a paper in Markdown and convert
+# it to PDF (via LaTeX) or Word. Subsequent stages add pandoc-crossref.
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-vscode-tex AS base-nvim-vscode-tex-pandoc
 
 # ---------------------------------------------------------------------------
-# Pandoc and pandoc-crossref installation (single RUN layer)
+# Pandoc installation
 # ---------------------------------------------------------------------------
 # 1. Detect the current CPU architecture (arm64 on Apple-Silicon Macs running
 #    Lima / Colima, amd64 on most x86_64 hosts).
@@ -595,15 +597,42 @@ RUN set -e; \
       rm /tmp/pandoc.tar.gz; \
     fi; \
     # ---------------------------------------------------------------
-    # . Install pandoc-crossref (compiles, because no other choice for linux-arm)
+    # 3. Cleanup
     # ---------------------------------------------------------------
-echo "Building pandoc-crossref from latest stable release..."; \
-    # Update package lists and install Haskell build dependencies
+    rm -rf /var/lib/apt/lists/*
+
+# ===========================================================================
+# STAGE 6: HASKELL                (base-nvim-vscode-tex-pandoc-haskell)
+# ===========================================================================
+# This stage adds the Haskell compiler, which we need to build pandoc-crossref
+# ---------------------------------------------------------------------------
+
+FROM base-nvim-vscode-tex-pandoc AS base-nvim-vscode-tex-pandoc-haskell
+
+# ---------------------------------------------------------------------------
+# Haskell Stack installation
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Installing Haskell build dependencies..."; \
     apt-get update -qq && \
     apt-get install -y --no-install-recommends libgmp-dev libtinfo-dev && \
-    # Install Haskell Stack
     curl -sSL https://get.haskellstack.org/ | sh; \
-    # Get the latest release tag
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ===========================================================================
+# STAGE 7: PANDOC-CROSSREF      (base-nvim-vscode-tex-pandoc-haskell-crossref)
+# ===========================================================================
+# This stage compiles and installs pandoc-crossref
+# ---------------------------------------------------------------------------
+
+FROM base-nvim-vscode-tex-pandoc-haskell AS base-nvim-vscode-tex-pandoc-haskell-crossref
+
+# ---------------------------------------------------------------------------
+# Build pandoc-crossref from source
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Building pandoc-crossref from latest stable release..."; \
+    # Get the latest release tag for pandoc-crossref
     LATEST_TAG=$(curl -s https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Building pandoc-crossref version: ${LATEST_TAG}"; \
     # Clone the specific release tag
@@ -622,20 +651,16 @@ echo "Building pandoc-crossref from latest stable release..."; \
     cd /; \
     rm -rf /tmp/pandoc-crossref; \
     rm -rf /root/.stack; \
-    echo "✅ pandoc-crossref ${LATEST_TAG} built and installed successfully"; \
-    # ---------------------------------------------------------------
-    # 5. Cleanup
-    # ---------------------------------------------------------------
-    rm -rf /var/lib/apt/lists/*
+    echo "✅ pandoc-crossref ${LATEST_TAG} built and installed successfully"
 
 # ===========================================================================
-# STAGE 6: MISC (whatever came up in debugging)           (base-nvim-vscode-tex-pandoc-plus)
+# STAGE 8: MISC (whatever came up in debugging)           (base-nvim-vscode-tex-pandoc-plus)
 # ===========================================================================
 # Builds on the Pandoc stage but installs extra LaTeX packages with tlmgr.
 # Useful to iterate quickly on TeX deps without re-building Pandoc.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc AS base-nvim-vscode-tex-pandoc-plus
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus
 
 # Install additional LaTeX packages (as root for system-level installation)
 RUN set -e; \
@@ -677,13 +702,13 @@ RUN set -e; \
 USER root
 
 # ===========================================================================
-# STAGE 7: FULL R DEVELOPMENT ENVIRONMENT          (full)
+# STAGE 9: FULL R DEVELOPMENT ENVIRONMENT          (full)
 # ===========================================================================
 # This final stage installs all R packages specified in R_packages.txt.
 # This is the default target when building with no --target flag.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-plus AS full
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus AS full
 
 # ---------------------------------------------------------------------------
 # System package updates
