@@ -76,42 +76,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 #   fd-find                    : Fast file finder (used by nvim telescope)
 #   tree-sitter-cli            : Parser generator tool (nvim syntax highlighting)
 # ---------------------------------------------------------------------------
-RUN apt-get update -qq && apt-get -y upgrade
-RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends \
-        software-properties-common \
-        dirmngr \
-        gnupg \
-        ca-certificates \
-        wget \
-        locales \
-        curl \
-        unzip \
-        ripgrep \
-        jags \
-        npm \
-        tmux \
-        zsh \
-        python3 \
-        python3-pip \
-        python3-dev \
-        build-essential \
-        gfortran \
-        libblas-dev \
-        liblapack-dev \
-        libxml2-dev \
-        libcurl4-openssl-dev \
-        libssl-dev \
-        libfontconfig1-dev \
-        libharfbuzz-dev \
-        libfribidi-dev \
-        libfreetype6-dev \
-        libpng-dev \
-        libtiff5-dev \
-        libjpeg-dev \
-        cmake \
-        git-lfs
-RUN apt-get update -qq && \
+RUN apt-get update -qq && apt-get -y upgrade && \
+    apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         software-properties-common \
         dirmngr \
@@ -145,6 +111,7 @@ RUN apt-get update -qq && \
         libjpeg-dev \
         cmake \
         git \
+        git-lfs \
         fd-find \
         pkg-config \
         autoconf \
@@ -455,13 +422,13 @@ FROM base-nvim-vscode AS base-nvim-vscode-tex
 # ---------------------------------------------------------------------------
 RUN set -e; \
     apt-get update -qq && \
-    apt-get install -y --no-install-recommends \ 
-        texlive-latex-extra \ 
-        texlive-xetex \ 
-        texlive-luatex \ 
-        texlive-fonts-extra \ 
-        fonts-lmodern \ 
-        fonts-cmu \ 
+    apt-get install -y --no-install-recommends \
+        texlive-latex-extra \
+        texlive-xetex \
+        texlive-luatex \
+        texlive-fonts-extra \
+        fonts-lmodern \
+        fonts-cmu \
         librsvg2-bin && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
