@@ -449,9 +449,12 @@ RUN set -e; \
         texlive-xetex \
         texlive-luatex \
         texlive-fonts-extra \
+        texlive-fonts-recommended \
         fonts-lmodern \
         fonts-cmu \
         librsvg2-bin && \
+    # Ensure font maps are up to date so XeTeX can find Zapf Dingbats (pzdr)
+    updmap-sys || true; \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

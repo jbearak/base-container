@@ -20,7 +20,12 @@ check_cmd() {
     local my_description="$1"
     local my_cmd="$2"
     echo "$my_description"
-    run_in_container "$my_cmd" >/dev/null 2>&1 || echo "⚠️  ${my_description} failed"
+    if run_in_container "$my_cmd" >/dev/null 2>&1; then
+        return 0
+    else
+        echo "⚠️  ${my_description} failed"
+        return 1
+    fi
 }
 
 test_vscode() {
@@ -35,30 +40,37 @@ test_latex_basic() {
 
 test_pandoc() {
     echo "📄 Testing Pandoc installation and functionality..."
-    run_in_container "pandoc --version | head -n 1" || echo "⚠️  Pandoc version test failed"
+    run_in_container "pandoc --version | head -n 1" || { echo "⚠️  Pandoc version test failed"; return 1; }
     echo "📝 Running comprehensive Pandoc tests (docx, pdf, citations)..."
-    docker run --rm -v "$(pwd)":/workspace -w /workspace "${CONTAINER_NAME}:${IMAGE_TAG}" ./test_pandoc.sh || echo "⚠️  Comprehensive Pandoc tests failed"
+    if docker run --rm -v "$(pwd)":/workspace -w /workspace "${CONTAINER_NAME}:${IMAGE_TAG}" ./test_pandoc.sh; then
+        return 0
+    else
+        echo "⚠️  Comprehensive Pandoc tests failed"
+        return 1
+    fi
 }
 
 test_pandoc_plus() {
     echo "🔍 Testing tlmgr soul package..."
-    run_in_container "kpsewhich soul.sty" || echo "⚠️ soul.sty missing"
+    run_in_container "kpsewhich soul.sty" || { echo "⚠️ soul.sty missing"; return 1; }
 }
 
 test_nvim_and_plugins() {
     echo "📝 Testing nvim and plugins..."
-    run_in_container "nvim --version" || echo "⚠️  nvim not available"
-    run_in_container "ls -la /home/me/.local/share/nvim/lazy/" || echo "⚠️  lazy.nvim plugins not found"
+    run_in_container "nvim --version" || { echo "⚠️  nvim not available"; return 1; }
+    run_in_container "ls -la /home/me/.local/share/nvim/lazy/" || { echo "⚠️  lazy.nvim plugins not found"; return 1; }
 }
 
 test_dev_tools() {
     echo "🛠️  Testing development tools..."
-    check_cmd "Checking Yarn..." "yarn --version"
-    check_cmd "Checking fd..." 'env PATH="/home/me/.local/bin:$PATH" fd --version'
-    check_cmd "Checking eza..." "eza --version"
+    local my_fail=0
+    check_cmd "Checking Yarn..." "yarn --version" || my_fail=1
+    check_cmd "Checking fd..." 'env PATH="/home/me/.local/bin:$PATH" fd --version' || my_fail=1
+    check_cmd "Checking eza..." "eza --version" || my_fail=1
     # gotests does not support --version; -h confirms presence
-    check_cmd "Checking gotests..." 'env GOPATH="/home/me/go" PATH="/home/me/go/bin:/usr/local/go/bin:$PATH" gotests -h >/dev/null'
-    check_cmd "Checking tree-sitter..." 'env PATH="/home/me/.local/bin:$PATH" tree-sitter --version'
+    check_cmd "Checking gotests..." 'env GOPATH="/home/me/go" PATH="/home/me/go/bin:/usr/local/go/bin:$PATH" gotests -h >/dev/null' || my_fail=1
+    check_cmd "Checking tree-sitter..." 'env PATH="/home/me/.local/bin:$PATH" tree-sitter --version' || my_fail=1
+    return $my_fail
 }
 
 # Parse command line arguments
@@ -160,33 +172,39 @@ echo "✅ Container built successfully!"
 # Optionally test the container
 if [ "$TEST_CONTAINER" = "true" ]; then
   echo "🧪 Testing container..."
+  TEST_FAIL=0
 
   echo "🔧 Testing basic system tools..."
   run_in_container "which zsh"
   run_in_container "R --version"
 
   if [ "$BUILD_TARGET" = "base-nvim-vscode" ] || [ "$BUILD_TARGET" = "full" ]; then
-    test_vscode
+    test_vscode || TEST_FAIL=1
   fi
 
   # LaTeX presence by stages
   if [ "$BUILD_TARGET" = "base-nvim-vscode-tex" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
-    test_latex_basic
+    test_latex_basic || TEST_FAIL=1
 
     if [ "$BUILD_TARGET" = "base-nvim-vscode-tex" ]; then
       echo "🚫 Verifying Pandoc is NOT installed in tex stage..."
-      run_in_container "which pandoc" && echo "⚠️  Pandoc found but should not be in tex stage" || echo "✅ Pandoc correctly absent from tex stage"
+      if run_in_container "which pandoc"; then
+        echo "⚠️  Pandoc found but should not be in tex stage"
+        TEST_FAIL=1
+      else
+        echo "✅ Pandoc correctly absent from tex stage"
+      fi
     fi
   fi
 
   # Pandoc tests
   if [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
-    test_pandoc
+    test_pandoc || TEST_FAIL=1
   fi
 
   # Extra LaTeX packages
   if [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
-    test_pandoc_plus
+    test_pandoc_plus || TEST_FAIL=1
   fi
 
   echo "📋 Checking for copied configuration files..."
@@ -194,17 +212,24 @@ if [ "$TEST_CONTAINER" = "true" ]; then
 
   # nvim stages and later
   if [ "$BUILD_TARGET" = "base-nvim" ] || [ "$BUILD_TARGET" = "base-nvim-vscode" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
-    test_nvim_and_plugins
+    test_nvim_and_plugins || TEST_FAIL=1
   fi
 
-  test_dev_tools
+  test_dev_tools || TEST_FAIL=1
 
   if [ "$BUILD_TARGET" = "full" ]; then
     echo "📦 Testing R package installation..."
-    run_in_container 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'
+    if ! run_in_container 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'; then
+      TEST_FAIL=1
+    fi
   fi
 
-  echo "✅ Container tests passed!"
+  if [ "$TEST_FAIL" -eq 0 ]; then
+    echo "✅ Container tests passed!"
+  else
+    echo "❌ Container tests failed"
+    exit 1
+  fi
 fi
 
 echo "🎉 Done! You can now:"
@@ -241,7 +266,7 @@ case "$BUILD_TARGET" in
 "full")
   echo "  • Test the full stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
   echo "  • Tag and push to GitHub Container Registry:"
-  echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/guttmacher/${CONTAINER_NAME}:${IMAGE_TAG}"
+  echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
   echo "    docker push ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
   ;;
 esac
