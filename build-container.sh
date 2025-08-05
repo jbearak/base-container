@@ -108,9 +108,21 @@ while [[ $# -gt 0 ]]; do
     echo "📚 Building image with LaTeX + Pandoc..."
     shift
     ;;
-  --base-nvim-vscode-tex-pandoc-plus)
-    BUILD_TARGET="base-nvim-vscode-tex-pandoc-plus"
-    IMAGE_TAG="base-nvim-vscode-tex-pandoc-plus"
+  --base-nvim-vscode-tex-pandoc-haskell)
+    BUILD_TARGET="base-nvim-vscode-tex-pandoc-haskell"
+    IMAGE_TAG="base-nvim-vscode-tex-pandoc-haskell"
+    echo "📚⚡ Building image with LaTeX + Pandoc + Haskell..."
+    shift
+    ;;
+  --base-nvim-vscode-tex-pandoc-haskell-crossref)
+    BUILD_TARGET="base-nvim-vscode-tex-pandoc-haskell-crossref"
+    IMAGE_TAG="base-nvim-vscode-tex-pandoc-haskell-crossref"
+    echo "📚🔀 Building image with LaTeX + Pandoc + Haskell + pandoc-crossref..."
+    shift
+    ;;
+  --base-nvim-vscode-tex-pandoc-haskell-crossref-plus)
+    BUILD_TARGET="base-nvim-vscode-tex-pandoc-haskell-crossref-plus"
+    IMAGE_TAG="base-nvim-vscode-tex-pandoc-haskell-crossref-plus"
     echo "📚➕ Building image with extra LaTeX packages..."
     shift
     ;;
@@ -160,7 +172,9 @@ while [[ $# -gt 0 ]]; do
     echo "  --base-nvim-vscode                   Build base + nvim + VS Code server and extensions"
     echo "  --base-nvim-vscode-tex               Build base + nvim + VS Code + LaTeX (no Pandoc)"
     echo "  --base-nvim-vscode-tex-pandoc        Build base + nvim + VS Code + LaTeX + Pandoc"
-    echo "  --base-nvim-vscode-tex-pandoc-plus   Build base + nvim + VS Code + LaTeX + Pandoc + extra packages"
+    echo "  --base-nvim-vscode-tex-pandoc-haskell        Build base + nvim + VS Code + LaTeX + Pandoc + Haskell"
+    echo "  --base-nvim-vscode-tex-pandoc-haskell-crossref Build base + nvim + VS Code + LaTeX + Pandoc + Haskell + crossref"
+    echo "  --base-nvim-vscode-tex-pandoc-haskell-crossref-plus   Build base + nvim + VS Code + LaTeX + Pandoc + extra packages"
     echo "  --full                               Build the full stage"
     echo ""
     echo "Other Options:"
@@ -227,7 +241,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
   fi
 
   # LaTeX presence by stages
-  if [ "$BUILD_TARGET" = "base-nvim-vscode-tex" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
+  if [ "$BUILD_TARGET" = "base-nvim-vscode-tex" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
     test_latex_basic || TEST_FAIL=1
 
     if [ "$BUILD_TARGET" = "base-nvim-vscode-tex" ]; then
@@ -242,12 +256,12 @@ if [ "$TEST_CONTAINER" = "true" ]; then
   fi
 
   # Pandoc tests
-  if [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
+  if [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
     test_pandoc || TEST_FAIL=1
   fi
 
   # Extra LaTeX packages
-  if [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
+  if [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
     test_pandoc_plus || TEST_FAIL=1
   fi
 
@@ -255,7 +269,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
   run_in_container 'ls -la /home/me/ | grep -E "\.(zprofile|tmux\.conf|lintr|Rprofile|bash_profile|npmrc)$"'
 
   # nvim stages and later
-  if [ "$BUILD_TARGET" = "base-nvim" ] || [ "$BUILD_TARGET" = "base-nvim-vscode" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
+  if [ "$BUILD_TARGET" = "base-nvim" ] || [ "$BUILD_TARGET" = "base-nvim-vscode" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-vscode-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "full" ]; then
     test_nvim_and_plugins || TEST_FAIL=1
   fi
 
@@ -300,10 +314,20 @@ case "$BUILD_TARGET" in
 "base-nvim-vscode-tex-pandoc")
   echo "  • Test the base-nvim-vscode-tex-pandoc stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
   echo "  • Test Pandoc with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} pandoc --version | head -n 1"
-  echo "  • Build with extra LaTeX packages next with: ./build-container.sh --base-nvim-vscode-tex-pandoc-plus"
+  echo "  • Build with extra LaTeX packages next with: ./build-container.sh --base-nvim-vscode-tex-pandoc-haskell-crossref-plus"
   ;;
-"base-nvim-vscode-tex-pandoc-plus")
-  echo "  • Test the base-nvim-vscode-tex-pandoc-plus stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
+"base-nvim-vscode-tex-pandoc-haskell")
+  echo "  • Test the base-nvim-vscode-tex-pandoc-haskell stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
+  echo "  • Test Stack with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} stack --version"
+  echo "  • Build with pandoc-crossref next with: ./build-container.sh --base-nvim-vscode-tex-pandoc-haskell-crossref"
+  ;;
+"base-nvim-vscode-tex-pandoc-haskell-crossref")
+  echo "  • Test the base-nvim-vscode-tex-pandoc-haskell-crossref stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
+  echo "  • Test pandoc-crossref with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} pandoc-crossref --version"
+  echo "  • Build with extra LaTeX packages next with: ./build-container.sh --base-nvim-vscode-tex-pandoc-haskell-crossref-plus"
+  ;;
+"base-nvim-vscode-tex-pandoc-haskell-crossref-plus")
+  echo "  • Test the base-nvim-vscode-tex-pandoc-haskell-crossref-plus stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
   echo "  • Test soul package with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} kpsewhich soul.sty"
   echo "  • Build the texlive-full version with: ./build-container.sh --full"
   ;;
