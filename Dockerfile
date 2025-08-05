@@ -275,6 +275,49 @@ RUN apt-get update -qq && \
 
 
 # ---------------------------------------------------------------------------
+# CmdStan installation
+# ---------------------------------------------------------------------------
+# Install CmdStan (command-line interface to Stan) which is required for
+# the rstan R package to work properly. CmdStan provides the Stan compiler
+# and runtime that rstan uses behind the scenes.
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Installing CmdStan..."; \
+    # Create directory for CmdStan
+    mkdir -p /opt/cmdstan; \
+    cd /opt/cmdstan; \
+    # Get the latest CmdStan release info from GitHub API
+    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/stan-dev/cmdstan/releases/latest); \
+    CMDSTAN_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    # Remove 'v' prefix from version for filename (e.g., v2.36.0 -> 2.36.0)
+    CMDSTAN_VERSION_CLEAN=$(echo "$CMDSTAN_VERSION" | sed 's/^v//'); \
+    echo "Installing CmdStan version: ${CMDSTAN_VERSION} (filename version: ${CMDSTAN_VERSION_CLEAN})"; \
+    # Construct URL for tarball (CmdStan uses version without 'v' prefix in filename)
+    CMDSTAN_URL="https://github.com/stan-dev/cmdstan/releases/download/${CMDSTAN_VERSION}/cmdstan-${CMDSTAN_VERSION_CLEAN}.tar.gz"; \
+    echo "Downloading CmdStan tarball from: ${CMDSTAN_URL}"; \
+    # Download tarball (CmdStan doesn't provide checksums, so we generate SHA256 for transparency)
+    curl -fsSL "$CMDSTAN_URL" -o cmdstan.tar.gz; \
+    # Generate and display SHA256 sum for verification/transparency
+    echo "Generating SHA256 sum for verification:"; \
+    CMDSTAN_SHA256=$(sha256sum cmdstan.tar.gz | cut -d' ' -f1); \
+    echo "SHA256: ${CMDSTAN_SHA256}"; \
+    echo "✅ CmdStan ${CMDSTAN_VERSION} downloaded successfully"; \
+    # Extract the tarball
+    tar -xzf cmdstan.tar.gz --strip-components=1; \
+    rm cmdstan.tar.gz; \
+    # Build CmdStan (this compiles the Stan compiler and math library)
+    echo "Building CmdStan (this may take several minutes)..."; \
+    make build -j$(nproc); \
+    # Set environment variable for CmdStan path
+    echo "export CMDSTAN=/opt/cmdstan" >> /etc/environment; \
+    # Verify installation
+    echo "CmdStan installed successfully at /opt/cmdstan"; \
+    ls -la /opt/cmdstan/bin/
+
+# Set CmdStan environment variable for current build
+ENV CMDSTAN=/opt/cmdstan
+
+# ---------------------------------------------------------------------------
 # Locale configuration
 # ---------------------------------------------------------------------------
 # Set UTF-8 locale to avoid character encoding issues in R and shell

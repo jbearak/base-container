@@ -4,11 +4,13 @@ askpass
 backports
 base64enc
 base64url
+bayesplot
 bit
 bit64
 blob
 boot
 brew
+brms
 broom
 broom.helpers
 bslib
@@ -125,6 +127,7 @@ lintr
 listenv
 litedown
 lme4
+loo
 lubridate
 magrittr
 markdown
@@ -198,6 +201,9 @@ rnaturalearthdata
 roxygen2
 rpart
 rprojroot
+rstan
+rstanarm
+rstantools
 rstatix
 rstudioapi
 rsvg
@@ -215,6 +221,7 @@ sfsmisc
 shiny
 shinyFeedback
 shinyjs
+shinystan
 shinyvalidate
 snow
 SnowballC
