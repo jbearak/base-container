@@ -576,7 +576,7 @@ echo "Building pandoc-crossref from latest stable release..."; \
     apt-get install -y --no-install-recommends libgmp-dev libtinfo-dev && \
     # Install Haskell Stack
     curl -sSL https://get.haskellstack.org/ | sh; \
-    # Get the latest release tag
+    # Get the latest release tag for pandoc-crossref
     LATEST_TAG=$(curl -s https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Building pandoc-crossref version: ${LATEST_TAG}"; \
     # Clone the specific release tag
