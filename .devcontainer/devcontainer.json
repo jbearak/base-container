@@ -1,0 +1,42 @@
+{
+  "name": "Base Container Development Environment",
+  
+  // Build from the existing Dockerfile in the repository
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  
+  // VS Code customizations
+  "customizations": {
+    "vscode": {
+      "extensions": [
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
+    }
+  },
+  
+  // Run setup commands after container creation
+  // "postCreateCommand": "",
+  
+  // Use non-root user for security
+  "remoteUser": "me",
+  "updateRemoteUserUID": true,
+  
+  "mounts": [
+    // Mount the Docker socket for Docker-in-Docker scenarios
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+    // Mount your Git configuration file
+    "source=${localEnv:HOME}/.gitconfig,target=/home/me/.gitconfig,type=bind,consistency=cached,readonly",
+  ],
+  
+  // Environment variables for development
+  "containerEnv": {
+    "DEVELOPMENT": "true"
+  },
+  
+  // Keep container running
+  "shutdownAction": "stopContainer"
+}
