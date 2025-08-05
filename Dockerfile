@@ -56,7 +56,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # 
 # Key packages explained:
 #   software-properties-common : Enables add-apt-repository command
-#   dirmngr, gnupg             : Required for adding GPG keys (CRAN, Charm)
+#   dirmngr, gnupg             : Required for adding GPG keys
 #   ca-certificates            : SSL certificates for HTTPS downloads
 #   wget, curl, unzip          : Download and extraction utilities
 #   locales                    : For setting UTF-8 locale
