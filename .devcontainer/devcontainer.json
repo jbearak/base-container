@@ -24,6 +24,12 @@
   // Use non-root user for security
   "remoteUser": "me",
   "updateRemoteUserUID": true,
+  // If you mount this image with Colima on macOS, you need to configure
+  // it to use vz for proper UID/GID mapping.
+  // To do this, run the following commands:
+  // colima stop
+  // colima delete
+  // colima start --vm-type vz --mount-type virtiofs
   
   "mounts": [
     // Mount the Docker socket for Docker-in-Docker scenarios
