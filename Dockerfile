@@ -554,7 +554,7 @@ echo "Building pandoc-crossref from latest stable release..."; \
 
 FROM base-nvim-vscode-tex-pandoc AS base-nvim-vscode-tex-pandoc-plus
 
-# Install additional LaTeX packages and git-lfs (as root for system-level installation)
+# Install additional LaTeX packages (as root for system-level installation)
 RUN set -e; \
     # First try to install soul directly from system packages
     apt-get update -qq && \
