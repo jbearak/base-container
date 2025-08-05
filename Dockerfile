@@ -616,7 +616,45 @@ RUN set -e; \
     echo "Installing Haskell build dependencies..."; \
     apt-get update -qq && \
     apt-get install -y --no-install-recommends libgmp-dev libtinfo-dev && \
-    curl -sSL https://get.haskellstack.org/ | sh; \
+    # Detect architecture for Stack binary
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) STACK_ARCH="x86_64" ;; \
+      arm64) STACK_ARCH="aarch64" ;; \
+      *) echo "Unsupported arch for Stack: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    # Get latest Stack release info from GitHub API
+    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/commercialhaskell/stack/releases/latest); \
+    STACK_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    # Remove 'v' prefix from version for filename
+    STACK_VERSION_CLEAN=$(echo "$STACK_VERSION" | sed 's/^v//'); \
+    echo "Installing Stack version: ${STACK_VERSION} (filename version: ${STACK_VERSION_CLEAN})"; \
+    # Construct URLs for binary and signature
+    STACK_BINARY_URL="https://github.com/commercialhaskell/stack/releases/download/${STACK_VERSION}/stack-${STACK_VERSION_CLEAN}-linux-${STACK_ARCH}.tar.gz"; \
+    STACK_SIG_URL="https://github.com/commercialhaskell/stack/releases/download/${STACK_VERSION}/stack-${STACK_VERSION_CLEAN}-linux-${STACK_ARCH}.tar.gz.asc"; \
+    echo "Downloading Stack binary from: ${STACK_BINARY_URL}"; \
+    echo "Downloading Stack signature from: ${STACK_SIG_URL}"; \
+    # Download binary and signature
+    curl -fsSL "$STACK_BINARY_URL" -o /tmp/stack.tar.gz; \
+    curl -fsSL "$STACK_SIG_URL" -o /tmp/stack.tar.gz.asc; \
+    # Import Stack's GPG signing key (FP Complete's key)
+    # Key ID: C5705533DA4F78D8664B5DC0575159689BEFB442
+    gpg --batch --keyserver keyserver.ubuntu.com --recv-keys C5705533DA4F78D8664B5DC0575159689BEFB442 || \
+    gpg --batch --keyserver keys.openpgp.org --recv-keys C5705533DA4F78D8664B5DC0575159689BEFB442 || \
+    gpg --batch --keyserver pgp.mit.edu --recv-keys C5705533DA4F78D8664B5DC0575159689BEFB442; \
+    # Verify the signature
+    echo "Verifying Stack tarball signature..."; \
+    gpg --batch --verify /tmp/stack.tar.gz.asc /tmp/stack.tar.gz; \
+    echo "✅ Stack tarball signature verified successfully"; \
+    # Extract and install Stack
+    tar -xzf /tmp/stack.tar.gz -C /tmp; \
+    STACK_DIR=$(find /tmp -name "stack-${STACK_VERSION_CLEAN}-linux-${STACK_ARCH}" -type d); \
+    cp "${STACK_DIR}/stack" /usr/local/bin/stack; \
+    chmod +x /usr/local/bin/stack; \
+    # Cleanup
+    rm -rf /tmp/stack.tar.gz /tmp/stack.tar.gz.asc /tmp/stack-*; \
+    # Verify installation
+    stack --version; \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ===========================================================================
