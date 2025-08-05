@@ -119,6 +119,8 @@ RUN apt-get update -qq && apt-get -y upgrade && \
         libtool \
         gettext \
         ninja-build \
+        shellcheck \
+        shfmt \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
