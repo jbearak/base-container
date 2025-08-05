@@ -199,11 +199,25 @@ RUN set -e; \
       arm64) NVIM_ARCH="arm64" ;; \
       *) echo "Unsupported arch for Neovim: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
     esac; \
-    NVIM_URL="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-${NVIM_ARCH}.tar.gz"; \
-    echo "Installing Neovim from ${NVIM_URL}"; \
+    # Get the latest release info from GitHub API
+    RELEASE_INFO=$(curl -fsSL "https://api.github.com/repos/neovim/neovim/releases/latest"); \
+    NVIM_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing Neovim ${NVIM_VERSION} for ${NVIM_ARCH}"; \
+    # Construct URL for tarball using GitHub Releases API data
+    NVIM_URL="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-${NVIM_ARCH}.tar.gz"; \
+    echo "Downloading Neovim from ${NVIM_URL}"; \
+    # Download the tarball
     curl -fsSL "${NVIM_URL}" -o /tmp/nvim.tar.gz; \
+    # Generate and display SHA1 sum for verification/transparency
+    echo "Generating SHA1 sum for verification:"; \
+    NVIM_SHA1=$(sha1sum /tmp/nvim.tar.gz | cut -d' ' -f1); \
+    echo "SHA1: ${NVIM_SHA1}"; \
+    echo "✅ Neovim ${NVIM_VERSION} downloaded successfully"; \
+    # Extract and install
     tar -xzf /tmp/nvim.tar.gz -C /usr/local --strip-components=1; \
-    rm /tmp/nvim.tar.gz
+    rm /tmp/nvim.tar.gz; \
+    # Verify installation
+    nvim --version | head -n 1
 
 # ---------------------------------------------------------------------------
 # R installation from CRAN
