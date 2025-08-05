@@ -660,36 +660,70 @@ RUN set -e; \
 # ===========================================================================
 # STAGE 7: PANDOC-CROSSREF      (base-nvim-vscode-tex-pandoc-haskell-crossref)
 # ===========================================================================
-# This stage compiles and installs pandoc-crossref
+# This stage installs pandoc-crossref from pre-built binaries when available,
+# or builds from source for unsupported architectures
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-vscode-tex-pandoc-haskell AS base-nvim-vscode-tex-pandoc-haskell-crossref
 
 # ---------------------------------------------------------------------------
-# Build pandoc-crossref from source
+# Install pandoc-crossref from GitHub releases or build from source
 # ---------------------------------------------------------------------------
 RUN set -e; \
-    echo "Building pandoc-crossref from latest stable release..."; \
-    # Get the latest release tag for pandoc-crossref
-    LATEST_TAG=$(curl -s https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
-    echo "Building pandoc-crossref version: ${LATEST_TAG}"; \
-    # Clone the specific release tag
-    cd /tmp; \
-    git clone --depth 1 --branch "${LATEST_TAG}" https://github.com/lierdakil/pandoc-crossref.git; \
-    cd pandoc-crossref; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) \
+        echo "Installing pandoc-crossref from pre-built binary for amd64..."; \
+        CROSSREF_ARCH="X64"; \
+        # Get latest release info from GitHub API
+        RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest); \
+        CROSSREF_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+        echo "Installing pandoc-crossref version: ${CROSSREF_VERSION}"; \
+        # Construct URL for binary using GitHub Releases API data
+        CROSSREF_URL="https://github.com/lierdakil/pandoc-crossref/releases/download/${CROSSREF_VERSION}/pandoc-crossref-Linux-${CROSSREF_ARCH}.tar.xz"; \
+        echo "Downloading pandoc-crossref from: ${CROSSREF_URL}"; \
+        # Download the tarball
+        curl -fsSL "$CROSSREF_URL" -o /tmp/pandoc-crossref.tar.xz; \
+        # Generate and display SHA256 sum for verification/transparency
+        echo "Generating SHA256 sum for verification:"; \
+        CROSSREF_SHA256=$(sha256sum /tmp/pandoc-crossref.tar.xz | cut -d' ' -f1); \
+        echo "SHA256: ${CROSSREF_SHA256}"; \
+        echo "✅ pandoc-crossref ${CROSSREF_VERSION} downloaded successfully"; \
+        # Extract and install
+        tar -xJf /tmp/pandoc-crossref.tar.xz -C /usr/local/bin; \
+        chmod +x /usr/local/bin/pandoc-crossref; \
+        rm /tmp/pandoc-crossref.tar.xz; \
+        ;; \
+      arm64) \
+        echo "Building pandoc-crossref from source for arm64 (no pre-built Linux binary available)..."; \
+        # Get the latest release tag for pandoc-crossref
+        LATEST_TAG=$(curl -s https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+        echo "Building pandoc-crossref version: ${LATEST_TAG}"; \
+        # Clone the specific release tag
+        cd /tmp; \
+        git clone --depth 1 --branch "${LATEST_TAG}" https://github.com/lierdakil/pandoc-crossref.git; \
+        cd pandoc-crossref; \
+        # Build with stack (this will take several minutes)
+        stack setup; \
+        stack build; \
+        # Install the binary
+        stack install --local-bin-path /usr/local/bin; \
+        # Cleanup build artifacts to reduce image size
+        cd /; \
+        rm -rf /tmp/pandoc-crossref; \
+        rm -rf /root/.stack; \
+        ;; \
+      *) \
+        echo "Unsupported architecture for pandoc-crossref: $ARCH"; \
+        echo "Supported: amd64 (binary), arm64 (source build)"; \
+        exit 1; \
+        ;; \
+    esac; \
     # Get the pandoc version for compatibility info
     PANDOC_VERSION=$(pandoc --version | head -n 1 | sed 's/pandoc //'); \
-    echo "Building pandoc-crossref ${LATEST_TAG} for Pandoc version: ${PANDOC_VERSION}"; \
-    # Build with stack (this will take several minutes)
-    stack setup; \
-    stack build; \
-    # Install the binary
-    stack install --local-bin-path /usr/local/bin; \
-    # Cleanup build artifacts to reduce image size
-    cd /; \
-    rm -rf /tmp/pandoc-crossref; \
-    rm -rf /root/.stack; \
-    echo "✅ pandoc-crossref ${LATEST_TAG} built and installed successfully"
+    echo "Installed pandoc-crossref for Pandoc version: ${PANDOC_VERSION}"; \
+    # Verify installation
+    pandoc-crossref --version
 
 # ===========================================================================
 # STAGE 8: MISC (whatever came up in debugging)           (base-nvim-vscode-tex-pandoc-plus)
