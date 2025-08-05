@@ -73,27 +73,27 @@ jobs:
         docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ matrix.target }}
         
         # Tag it locally for testing
-        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ matrix.target }} dev-container:${{ matrix.target }}
+        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ matrix.target }} base-container:${{ matrix.target }}
         
         # Run stage-appropriate tests
         case "${{ matrix.target }}" in
           "base")
-            docker run --rm dev-container:${{ matrix.target }} bash -c "which zsh && R --version"
+            docker run --rm base-container:${{ matrix.target }} bash -c "which zsh && R --version"
             ;;
           "base-nvim")
-            docker run --rm dev-container:${{ matrix.target }} bash -c "nvim --version && ls -la /home/me/.local/share/nvim/lazy/"
+            docker run --rm base-container:${{ matrix.target }} bash -c "nvim --version && ls -la /home/me/.local/share/nvim/lazy/"
             ;;
           "base-nvim-vscode")
-            docker run --rm dev-container:${{ matrix.target }} bash -c "ls -la /home/me/.vscode-server/bin/"
+            docker run --rm base-container:${{ matrix.target }} bash -c "ls -la /home/me/.vscode-server/bin/"
             ;;
           "base-nvim-vscode-tex")
-            docker run --rm dev-container:${{ matrix.target }} bash -c "xelatex --version | head -n 1"
+            docker run --rm base-container:${{ matrix.target }} bash -c "xelatex --version | head -n 1"
             ;;
           "base-nvim-vscode-tex-pandoc"|"base-nvim-vscode-tex-pandoc-plus")
-            docker run --rm dev-container:${{ matrix.target }} bash -c "pandoc --version | head -n 1"
+            docker run --rm base-container:${{ matrix.target }} bash -c "pandoc --version | head -n 1"
             ;;
           "full")
-            docker run --rm dev-container:${{ matrix.target }} bash -c 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'
+            docker run --rm base-container:${{ matrix.target }} bash -c 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'
             ;;
         esac
 

@@ -5,7 +5,7 @@
 
 set -e
 
-CONTAINER_NAME="dev-container"
+CONTAINER_NAME="base-container"
 IMAGE_TAG="latest"
 BUILD_TARGET="full" # Default to full build
 DEBUG_MODE=""

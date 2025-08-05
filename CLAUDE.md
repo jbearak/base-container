@@ -19,7 +19,7 @@ Multi-stage R development container for research environments. Primary focus is 
 - Built-in test suite: `./build-container.sh --full --test` (works for other stages)
 - Pandoc smoke tests: `./test_pandoc.sh` (run inside container)
 - R packages quick test: `./test_packages.sh` (requires R on host)
-- One-off container check: `docker run --rm dev-container:<tag> <cmd>`
+- One-off container check: `docker run --rm base-container:<tag> <cmd>`
 
 **Lint/Format:**
 - Dockerfile: `hadolint Dockerfile`

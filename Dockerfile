@@ -1,5 +1,5 @@
 # ===========================================================================
-# MULTI-STAGE R DEV-CONTAINER IMAGE
+# MULTI-STAGE R base-container IMAGE
 # ===========================================================================
 # Purpose   : Build a containerized R development environment optimized for
 #             VS Code and the Dev Containers extension.  This Dockerfile uses
@@ -22,13 +22,13 @@
 #
 # Usage     : See build-container.sh for user-friendly build commands, or
 #             build directly with:
-#               docker build --target base -t dev-container:base .
-#               docker build --target base-nvim -t dev-container:base-nvim .
-#               docker build --target base-nvim-vscode -t dev-container:base-nvim-vscode .
-#               docker build --target base-nvim-vscode-tex -t dev-container:base-nvim-vscode-tex .
-#               docker build --target base-nvim-vscode-tex-pandoc -t dev-container:base-nvim-vscode-tex-pandoc .
-#               docker build --target base-nvim-vscode-tex-pandoc-plus -t dev-container:base-nvim-vscode-tex-pandoc-plus .
-#               docker build --target full -t dev-container:latest .
+#               docker build --target base -t base-container:base .
+#               docker build --target base-nvim -t base-container:base-nvim .
+#               docker build --target base-nvim-vscode -t base-container:base-nvim-vscode .
+#               docker build --target base-nvim-vscode-tex -t base-container:base-nvim-vscode-tex .
+#               docker build --target base-nvim-vscode-tex-pandoc -t base-container:base-nvim-vscode-tex-pandoc .
+#               docker build --target base-nvim-vscode-tex-pandoc-plus -t base-container:base-nvim-vscode-tex-pandoc-plus .
+#               docker build --target full -t base-container:latest .
 #
 # ---------------------------------------------------------------------------
 
