@@ -159,6 +159,10 @@ RUN apt-get update -qq && apt-get -y upgrade && \
         libpq-dev \
         libsasl2-dev \
         libldap2-dev \
+        libgit2-dev \
+        default-jdk \
+        libgsl-dev \
+        libmpfr-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------

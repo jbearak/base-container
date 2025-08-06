@@ -64,37 +64,24 @@ install_package() {
     echo -n "📦 Installing $package... "
     package_start=$(date +%s)
     
+    # Capture R output
+    local r_output
+    r_output=$(echo "$r_command" | R --slave --no-restore 2>&1)
+    
+    # Show output in debug mode
     if [[ "$DEBUG_MODE" == "true" ]]; then
-        # Show full R output in debug mode and capture result
-        local r_output
-        r_output=$(echo "$r_command" | R --slave --no-restore 2>&1)
         echo "$r_output"
-        
-        # Check if the output contains "success" or "already installed"
-        if echo "$r_output" | grep -q -E "(success|already installed)"; then
-            echo "✅"
-            ((installed_count++))
-            return 0
-        else
-            echo "❌"
-            failed_packages+=("$package")
-            return 1
-        fi
+    fi
+    
+    # Check if the output contains "success" or "already installed"
+    if echo "$r_output" | grep -q -E "(success|already installed)"; then
+        echo "✅"
+        ((installed_count++))
+        return 0
     else
-        # Capture R output but don't show it in normal mode
-        local r_output
-        r_output=$(echo "$r_command" | R --slave --no-restore 2>&1)
-        
-        # Check if the output contains "success" or "already installed"
-        if echo "$r_output" | grep -q -E "(success|already installed)"; then
-            echo "✅"
-            ((installed_count++))
-            return 0
-        else
-            echo "❌"
-            failed_packages+=("$package")
-            return 1
-        fi
+        echo "❌"
+        failed_packages+=("$package")
+        return 1
     fi
 }
 
@@ -137,27 +124,27 @@ echo -n "🌐 Installing httpgd from GitHub... "
 # Get latest release info from GitHub API
 HTTPGD_RELEASE_INFO=$(curl -s https://api.github.com/repos/nx10/httpgd/releases/latest)
 HTTPGD_VERSION=$(echo "$HTTPGD_RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-HTTPGD_ASSET_NAME=$(echo "$HTTPGD_RELEASE_INFO" | grep '"name":.*\.tar\.gz"' | sed -E 's/.*"([^"]+)".*/\1/')
 
-if [[ -z "$HTTPGD_VERSION" || -z "$HTTPGD_ASSET_NAME" ]]; then
+if [[ -z "$HTTPGD_VERSION" ]]; then
     echo "❌ Failed to get httpgd release information"
     failed_packages+=("httpgd")
 else
-    # Construct download URL
-    HTTPGD_URL="https://github.com/nx10/httpgd/releases/download/${HTTPGD_VERSION}/${HTTPGD_ASSET_NAME}"
+    # Use GitHub's tarball URL (httpgd doesn't provide release assets)
+    HTTPGD_TARBALL_NAME="httpgd-${HTTPGD_VERSION}.tar.gz"
+    HTTPGD_URL="https://api.github.com/repos/nx10/httpgd/tarball/${HTTPGD_VERSION}"
     
     if [[ "$DEBUG_MODE" == "true" ]]; then
         echo
         echo "  Version: $HTTPGD_VERSION"
-        echo "  Asset: $HTTPGD_ASSET_NAME"
+        echo "  Tarball: $HTTPGD_TARBALL_NAME"
         echo "  URL: $HTTPGD_URL"
-        echo -n "  Downloading and verifying... "
+        echo -n "  Downloading... "
     fi
     
     # Download the package
-    if curl -fsSL "$HTTPGD_URL" -o "/tmp/$HTTPGD_ASSET_NAME"; then
+    if curl -fsSL "$HTTPGD_URL" -o "/tmp/$HTTPGD_TARBALL_NAME"; then
         # Calculate SHA256 checksum of downloaded file
-        DOWNLOADED_HTTPGD_SHA256=$(sha256sum "/tmp/$HTTPGD_ASSET_NAME" | cut -d' ' -f1)
+        DOWNLOADED_HTTPGD_SHA256=$(sha256sum "/tmp/$HTTPGD_TARBALL_NAME" | cut -d' ' -f1)
         
         if [[ "$DEBUG_MODE" == "true" ]]; then
             echo "✅ Downloaded"
@@ -166,7 +153,7 @@ else
         fi
         
         # Install the package from the downloaded tarball
-        httpgd_command="install.packages('/tmp/$HTTPGD_ASSET_NAME', repos=NULL, type='source', dependencies=TRUE, quiet=TRUE)"
+        httpgd_command="install.packages('/tmp/$HTTPGD_TARBALL_NAME', repos=NULL, type='source', dependencies=TRUE, quiet=TRUE)"
         
         if [[ "$DEBUG_MODE" == "true" ]]; then
             if echo "$httpgd_command" | R --slave --no-restore; then
@@ -187,7 +174,7 @@ else
         fi
         
         # Clean up downloaded file
-        rm -f "/tmp/$HTTPGD_ASSET_NAME"
+        rm -f "/tmp/$HTTPGD_TARBALL_NAME"
     else
         echo "❌ Failed to download httpgd"
         failed_packages+=("httpgd")
