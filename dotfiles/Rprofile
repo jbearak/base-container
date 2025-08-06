@@ -1,3 +1,4 @@
+.libPaths(c(.libPaths(), "/usr/local/lib/R/site-library"))
 options(menu.graphics=FALSE)
 if (.Platform$OS.type == "unix" && (interactive() || isatty(stdout()))) {
     try(library("colorout"))
