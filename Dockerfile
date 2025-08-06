@@ -13,7 +13,8 @@
 #             Stage 6 (base-nvim-vscode-tex-pandoc-haskell): Compile Haskell to compile pandoc-crossref.
 #             Stage 7 (base-nvim-vscode-tex-pandoc-haskell-crossref): Add pandoc-crossref for numbering figures, equations, tables.
 #             Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus): Add extra LaTeX packages via tlmgr (e.g. soul)
-#             Stage 9 (full)               : Final stage; installs a comprehensive suite of R packages.
+#             Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r): Install a comprehensive suite of R packages.
+#             Stage 10 (full)              : Final stage; currently empty but ready for additional setup.
 #
 # Why multi-stage?
 #   • Allows for quick debugging of specific components without rebuilding everything
@@ -851,13 +852,12 @@ RUN set -e; \
 USER root
 
 # ===========================================================================
-# STAGE 9: FULL R DEVELOPMENT ENVIRONMENT          (full)
+# STAGE 9: FULL R DEVELOPMENT ENVIRONMENT          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r)
 # ===========================================================================
-# This final stage installs all R packages specified in R_packages.txt.
-# This is the default target when building with no --target flag.
+# This stage installs all R packages specified in R_packages.txt.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus AS full
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r
 
 # ---------------------------------------------------------------------------
 # System package updates
@@ -900,4 +900,16 @@ RUN chmod +x /tmp/install_r_packages.sh && \
     fi
 
 # Switch back to the 'me' user for the final container
+USER me
+
+# ===========================================================================
+# STAGE 10: FULL DEVELOPMENT ENVIRONMENT          (full)
+# ===========================================================================
+# This is the final stage that will be the default target when building
+# with no --target flag. Currently empty but ready for additional setup.
+# ---------------------------------------------------------------------------
+
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r AS full
+
+# Switch to the 'me' user for the final container
 USER me
