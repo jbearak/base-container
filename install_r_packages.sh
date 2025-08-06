@@ -131,6 +131,69 @@ else
     fi
 fi
 
+# Install httpgd from GitHub
+echo -n "🌐 Installing httpgd from GitHub... "
+
+# Get latest release info from GitHub API
+HTTPGD_RELEASE_INFO=$(curl -s https://api.github.com/repos/nx10/httpgd/releases/latest)
+HTTPGD_VERSION=$(echo "$HTTPGD_RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+HTTPGD_ASSET_NAME=$(echo "$HTTPGD_RELEASE_INFO" | grep '"name":.*\.tar\.gz"' | sed -E 's/.*"([^"]+)".*/\1/')
+
+if [[ -z "$HTTPGD_VERSION" || -z "$HTTPGD_ASSET_NAME" ]]; then
+    echo "❌ Failed to get httpgd release information"
+    failed_packages+=("httpgd")
+else
+    # Construct download URL
+    HTTPGD_URL="https://github.com/nx10/httpgd/releases/download/${HTTPGD_VERSION}/${HTTPGD_ASSET_NAME}"
+    
+    if [[ "$DEBUG_MODE" == "true" ]]; then
+        echo
+        echo "  Version: $HTTPGD_VERSION"
+        echo "  Asset: $HTTPGD_ASSET_NAME"
+        echo "  URL: $HTTPGD_URL"
+        echo -n "  Downloading and verifying... "
+    fi
+    
+    # Download the package
+    if curl -fsSL "$HTTPGD_URL" -o "/tmp/$HTTPGD_ASSET_NAME"; then
+        # Calculate SHA256 checksum of downloaded file
+        DOWNLOADED_HTTPGD_SHA256=$(sha256sum "/tmp/$HTTPGD_ASSET_NAME" | cut -d' ' -f1)
+        
+        if [[ "$DEBUG_MODE" == "true" ]]; then
+            echo "✅ Downloaded"
+            echo "  SHA256: $DOWNLOADED_HTTPGD_SHA256"
+            echo -n "  Installing R package... "
+        fi
+        
+        # Install the package from the downloaded tarball
+        httpgd_command="install.packages('/tmp/$HTTPGD_ASSET_NAME', repos=NULL, type='source', dependencies=TRUE, quiet=TRUE)"
+        
+        if [[ "$DEBUG_MODE" == "true" ]]; then
+            if echo "$httpgd_command" | R --slave --no-restore; then
+                echo "✅"
+                ((installed_count++))
+            else
+                echo "❌"
+                failed_packages+=("httpgd")
+            fi
+        else
+            if echo "$httpgd_command" | R --slave --no-restore >/dev/null 2>&1; then
+                echo "✅"
+                ((installed_count++))
+            else
+                echo "❌"
+                failed_packages+=("httpgd")
+            fi
+        fi
+        
+        # Clean up downloaded file
+        rm -f "/tmp/$HTTPGD_ASSET_NAME"
+    else
+        echo "❌ Failed to download httpgd"
+        failed_packages+=("httpgd")
+    fi
+fi
+
 # Install colorout from GitHub
 echo -n "🎨 Installing colorout from GitHub... "
 
