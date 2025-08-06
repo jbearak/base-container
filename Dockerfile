@@ -14,7 +14,8 @@
 #             Stage 7 (base-nvim-vscode-tex-pandoc-haskell-crossref): Add pandoc-crossref for numbering figures, equations, tables.
 #             Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus): Add extra LaTeX packages via tlmgr (e.g. soul)
 #             Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r): Install a comprehensive suite of R packages.
-#             Stage 10 (full)              : Final stage; currently empty but ready for additional setup.
+#             Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py): Add Python 3.13 using deadsnakes PPA.
+#             Stage 11 (full)              : Final stage; currently empty but ready for additional setup.
 #
 # Why multi-stage?
 #   • Allows for quick debugging of specific components without rebuilding everything
@@ -903,13 +904,52 @@ RUN chmod +x /tmp/install_r_packages.sh && \
 USER me
 
 # ===========================================================================
-# STAGE 10: FULL DEVELOPMENT ENVIRONMENT          (full)
+# STAGE 10: PYTHON 3.13 INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py)
+# ===========================================================================
+# This stage adds Python 3.13 using the deadsnakes PPA for the latest Python version.
+# ---------------------------------------------------------------------------
+
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py
+
+# Switch to root for system package installation
+USER root
+
+# ---------------------------------------------------------------------------
+# Python 3.13 installation using deadsnakes PPA
+# ---------------------------------------------------------------------------
+# The deadsnakes PPA provides the latest Python versions for Ubuntu
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Adding deadsnakes PPA for Python 3.13..."; \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update -qq && \
+    echo "Installing Python 3.13..."; \
+    apt-get install -y --no-install-recommends \
+        python3.13 \
+        python3.13-dev \
+        python3.13-venv \
+        python3.13-distutils && \
+    # Create symlinks for python3.13
+    update-alternatives --install /usr/bin/python3.13 python3.13 /usr/bin/python3.13 1 && \
+    # Verify installation
+    python3.13 --version && \
+    echo "✅ Python 3.13 installed successfully" && \
+    # Clean up
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Switch back to the 'me' user
+USER me
+
+# ===========================================================================
+# STAGE 11: FULL DEVELOPMENT ENVIRONMENT          (full)
 # ===========================================================================
 # This is the final stage that will be the default target when building
 # with no --target flag. Currently empty but ready for additional setup.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r AS full
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py AS full
 
 # Switch to the 'me' user for the final container
 USER me
