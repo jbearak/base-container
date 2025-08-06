@@ -136,7 +136,6 @@ Matrix
 MatrixModels
 matrixStats
 maxstat
-mcmcplots
 memoise
 mgcv
 microbenchmark

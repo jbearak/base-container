@@ -218,14 +218,19 @@ else
 fi
 
 # Use docker buildx for better caching support
-docker buildx build ${NO_CACHE} ${DEBUG_MODE} ${TARGET_CACHE_MODE} \
+if docker buildx build ${NO_CACHE} ${DEBUG_MODE} ${TARGET_CACHE_MODE} \
   --progress=plain \
   --target "${BUILD_TARGET}" \
   --build-arg BUILDKIT_INLINE_CACHE=1 \
   -t "${CONTAINER_NAME}:${IMAGE_TAG}" \
-  .
-
-echo "✅ Container built successfully!"
+  .; then
+  echo "✅ Container built successfully!"
+else
+  build_exit_code=$?
+  echo
+  echo "❌ Container build failed!"
+  exit $build_exit_code
+fi
 
 # Optionally test the container
 if [ "$TEST_CONTAINER" = "true" ]; then

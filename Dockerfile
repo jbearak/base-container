@@ -133,6 +133,30 @@ RUN apt-get update -qq && apt-get -y upgrade && \
         ninja-build \
         shellcheck \
         shfmt \
+        libgdal-dev \
+        gdal-bin \
+        libproj-dev \
+        proj-data \
+        proj-bin \
+        libgeos-dev \
+        libudunits2-0 \
+        libudunits2-dev \
+        libudunits2-data \
+        udunits-bin \
+        libcairo2-dev \
+        libxt-dev \
+        libx11-dev \
+        libmagick++-dev \
+        librsvg2-dev \
+        libv8-dev \
+        libjq-dev \
+        libprotobuf-dev \
+        protobuf-compiler \
+        libnode-dev \
+        libsqlite3-dev \
+        libpq-dev \
+        libsasl2-dev \
+        libldap2-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
@@ -862,15 +886,17 @@ USER root
 # Accept debug flag from build args
 ARG DEBUG_PACKAGES=false
 
-COPY install_packages.sh /tmp/install_packages.sh
+COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/packages.txt
 
 # Install all R packages listed in R_packages.txt
 # This step can take well over an hour.
-RUN if [ "$DEBUG_PACKAGES" = "true" ]; then \
-        bash /tmp/install_packages.sh --debug; \
+# Failed packages will be printed directly at the end of the installation
+RUN chmod +x /tmp/install_r_packages.sh && \
+    if [ "$DEBUG_PACKAGES" = "true" ]; then \
+        /tmp/install_r_packages.sh --debug; \
     else \
-        bash /tmp/install_packages.sh; \
+        /tmp/install_r_packages.sh; \
     fi
 
 # Switch back to the 'me' user for the final container
