@@ -98,7 +98,6 @@ here
 highr
 hms
 htmltools
-httpgd
 httpuv
 httr
 ids

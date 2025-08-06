@@ -65,8 +65,13 @@ install_package() {
     package_start=$(date +%s)
     
     if [[ "$DEBUG_MODE" == "true" ]]; then
-        # Show full R output in debug mode
-        if echo "$r_command" | R --slave --no-restore; then
+        # Show full R output in debug mode and capture result
+        local r_output
+        r_output=$(echo "$r_command" | R --slave --no-restore 2>&1)
+        echo "$r_output"
+        
+        # Check if the output contains "success" or "already installed"
+        if echo "$r_output" | grep -q -E "(success|already installed)"; then
             echo "✅"
             ((installed_count++))
             return 0
@@ -76,8 +81,12 @@ install_package() {
             return 1
         fi
     else
-        # Suppress R output in normal mode
-        if echo "$r_command" | R --slave --no-restore >/dev/null 2>&1; then
+        # Capture R output but don't show it in normal mode
+        local r_output
+        r_output=$(echo "$r_command" | R --slave --no-restore 2>&1)
+        
+        # Check if the output contains "success" or "already installed"
+        if echo "$r_output" | grep -q -E "(success|already installed)"; then
             echo "✅"
             ((installed_count++))
             return 0
