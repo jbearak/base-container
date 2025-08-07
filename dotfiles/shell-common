@@ -1,3 +1,9 @@
 # R library path configuration
 # Add system-wide R library directory to R's library search path
 export R_LIBS_SITE="/usr/local/lib/R/site-library"
+
+# Configure renv to use external libraries
+export RENV_CONFIG_EXTERNAL_LIBRARIES="/usr/local/lib/R/site-library"
+
+# Enable renv install shortcuts for faster package installation
+export RENV_CONFIG_INSTALL_SHORTCUTS="TRUE"
