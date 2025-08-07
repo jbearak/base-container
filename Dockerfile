@@ -163,6 +163,7 @@ RUN apt-get update -qq && apt-get -y upgrade && \
         default-jdk \
         libgsl-dev \
         libmpfr-dev \
+        bat \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
@@ -221,6 +222,99 @@ RUN set -e; \
     apt-get install -y --no-install-recommends eza; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Install glow (terminal markdown renderer) from GitHub releases
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) GLOW_ARCH="x86_64" ;; \
+      arm64) GLOW_ARCH="arm64" ;; \
+      *) echo "Unsupported arch for glow: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    # Get latest release info from GitHub API
+    RELEASE_INFO=$(curl -s https://api.github.com/repos/charmbracelet/glow/releases/latest); \
+    GLOW_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing glow version: ${GLOW_VERSION}"; \
+    # Construct URL for .deb package (glow uses different naming for x86_64 vs arm64)
+    if [ "$GLOW_ARCH" = "x86_64" ]; then \
+        GLOW_DEB_URL="https://github.com/charmbracelet/glow/releases/download/${GLOW_VERSION}/glow_${GLOW_VERSION#v}_linux_amd64.deb"; \
+    else \
+        GLOW_DEB_URL="https://github.com/charmbracelet/glow/releases/download/${GLOW_VERSION}/glow_${GLOW_VERSION#v}_${GLOW_ARCH}.deb"; \
+    fi; \
+    echo "Downloading glow .deb from: ${GLOW_DEB_URL}"; \
+    # Download and install the .deb package
+    curl -fsSL "$GLOW_DEB_URL" -o /tmp/glow.deb; \
+    # Generate and display SHA256 sum for verification
+    GLOW_SHA256=$(sha256sum /tmp/glow.deb | cut -d' ' -f1); \
+    echo "Glow .deb SHA256: ${GLOW_SHA256}"; \
+    echo "✅ Glow ${GLOW_VERSION} downloaded and verified"; \
+    # Install the package
+    dpkg -i /tmp/glow.deb; \
+    rm /tmp/glow.deb; \
+    # Verify installation
+    glow --version
+
+# ---------------------------------------------------------------------------
+# Install delta (syntax-highlighting pager for git) from GitHub releases
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) DELTA_ARCH="amd64" ;; \
+      arm64) DELTA_ARCH="arm64" ;; \
+      *) echo "Unsupported arch for delta: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    # Get latest release info from GitHub API
+    RELEASE_INFO=$(curl -s https://api.github.com/repos/dandavison/delta/releases/latest); \
+    DELTA_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing delta version: ${DELTA_VERSION}"; \
+    # Construct URL for .deb package
+    DELTA_DEB_URL="https://github.com/dandavison/delta/releases/download/${DELTA_VERSION}/git-delta_${DELTA_VERSION}_${DELTA_ARCH}.deb"; \
+    echo "Downloading delta .deb from: ${DELTA_DEB_URL}"; \
+    # Download and install the .deb package
+    curl -fsSL "$DELTA_DEB_URL" -o /tmp/delta.deb; \
+    # Generate and display SHA256 sum for verification
+    DELTA_SHA256=$(sha256sum /tmp/delta.deb | cut -d' ' -f1); \
+    echo "Delta .deb SHA256: ${DELTA_SHA256}"; \
+    echo "✅ Delta ${DELTA_VERSION} downloaded and verified"; \
+    # Install the package
+    dpkg -i /tmp/delta.deb; \
+    rm /tmp/delta.deb; \
+    # Verify installation
+    delta --version
+
+# ---------------------------------------------------------------------------
+# Install difftastic (structural diff tool) from GitHub releases
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) DIFFT_ARCH="x86_64" ;; \
+      arm64) DIFFT_ARCH="aarch64" ;; \
+      *) echo "Unsupported arch for difftastic: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    # Get latest release info from GitHub API
+    RELEASE_INFO=$(curl -s https://api.github.com/repos/Wilfred/difftastic/releases/latest); \
+    DIFFT_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing difftastic version: ${DIFFT_VERSION}"; \
+    # Construct URL for tarball (difftastic provides tar.gz, not .deb)
+    DIFFT_TAR_URL="https://github.com/Wilfred/difftastic/releases/download/${DIFFT_VERSION}/difft-${DIFFT_ARCH}-unknown-linux-gnu.tar.gz"; \
+    echo "Downloading difftastic tarball from: ${DIFFT_TAR_URL}"; \
+    # Download and install the tarball
+    curl -fsSL "$DIFFT_TAR_URL" -o /tmp/difftastic.tar.gz; \
+    # Generate and display SHA256 sum for verification
+    DIFFT_SHA256=$(sha256sum /tmp/difftastic.tar.gz | cut -d' ' -f1); \
+    echo "Difftastic tarball SHA256: ${DIFFT_SHA256}"; \
+    echo "✅ Difftastic ${DIFFT_VERSION} downloaded and verified"; \
+    # Extract and install the binary
+    tar -xzf /tmp/difftastic.tar.gz -C /tmp; \
+    mv /tmp/difft /usr/local/bin/difft; \
+    chmod +x /usr/local/bin/difft; \
+    rm /tmp/difftastic.tar.gz; \
+    # Verify installation
+    difft --version
 
 # ---------------------------------------------------------------------------
 # Install latest Go from official source (Ubuntu's version is outdated)
