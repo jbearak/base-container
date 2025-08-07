@@ -71,6 +71,52 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
 
 The container will automatically download and start your development environment.
 
+## Amazon Q CLI Integration
+
+For projects that use Amazon Q CLI, you can extend the base container with Amazon Q installation and configuration. Here's an example devcontainer.json that includes Amazon Q CLI for Linux ARM:
+
+```jsonc
+{
+  "name": "Base Container with Amazon Q CLI",
+  "image": "ghcr.io/jbearak/base-container:latest",
+
+  // Use non-root user "me". Set to "root" if needed.
+  "remoteUser": "me",
+  "updateRemoteUserUID": true,
+
+  // Mount local Git config and AWS/Q configurations
+  "mounts": [
+    "source=${localEnv:HOME}/.gitconfig,target=/home/me/.gitconfig,type=bind,consistency=cached,readonly",
+    // --- AWS/Q Configuration ---
+    // This mounts your AWS configuration directory to persist Q login information
+    "source=${localEnv:HOME}/.aws,target=/home/me/.aws,type=bind,consistency=cached",
+    // --- Amazon Q Local Data ---
+    // This mounts the Amazon Q local data directory to persist authentication state
+    "source=${localEnv:HOME}/.local/share/amazon-q,target=/home/me/.local/share/amazon-q,type=bind,consistency=cached"
+    // Note: The container will fail to start if these directories do not exist on the host.
+    // You can create them with `mkdir -p ~/.aws` and `mkdir -p ~/.local/share/amazon-q`
+  ],
+
+  // Set container timezone from host
+  "containerEnv": {
+    "TZ": "${localEnv:TZ}"
+  },
+
+  // Install Amazon Q CLI on container creation
+  "postCreateCommand": "curl -sSL https://aws-cli-q-installer.s3.amazonaws.com/q-installer-linux-arm64.tar.gz | tar -xz && sudo ./q-installer-linux-arm64/install && rm -rf ./q-installer-linux-arm64"
+}
+```
+
+**Important Setup Notes:**
+- Create the required directories on your host before starting the container:
+  ```bash
+  mkdir -p ~/.aws ~/.local/share/amazon-q
+  ```
+- After the container starts, authenticate with Amazon Q:
+  ```bash
+  q auth
+  ```
+
 ## License
 
 Licensed under the [MIT License](LICENSE.txt).
