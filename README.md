@@ -71,51 +71,93 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
 
 The container will automatically download and start your development environment.
 
+# Using the Container with an Agentic Coding Tool
+
+To use an agentic coding tool, modify devcontainer.json to include the necessary mounts and post-create commands to install the tool.
+
 ## Amazon Q CLI Integration
 
-For projects that use Amazon Q CLI, you can extend the base container with Amazon Q installation and configuration. Here's an example devcontainer.json that includes Amazon Q CLI for Linux ARM:
+As an example, here is how to integrate the Amazon Q CLI into your dev container. There are two approaches:
 
-```jsonc
-{
-  "name": "Base Container with Amazon Q CLI",
-  "image": "ghcr.io/jbearak/base-container:latest",
+### Option 1: Custom Docker Image (Recommended)
 
-  // Use non-root user "me". Set to "root" if needed.
-  "remoteUser": "me",
-  "updateRemoteUserUID": true,
+Build a custom image that extends the base container with Q CLI pre-installed:
 
-  // Mount local Git config and AWS/Q configurations
-  "mounts": [
-    "source=${localEnv:HOME}/.gitconfig,target=/home/me/.gitconfig,type=bind,consistency=cached,readonly",
-    // --- AWS/Q Configuration ---
-    // This mounts your AWS configuration directory to persist Q login information
-    "source=${localEnv:HOME}/.aws,target=/home/me/.aws,type=bind,consistency=cached",
-    // --- Amazon Q Local Data ---
-    // This mounts the Amazon Q local data directory to persist authentication state
-    "source=${localEnv:HOME}/.local/share/amazon-q,target=/home/me/.local/share/amazon-q,type=bind,consistency=cached"
-    // Note: The container will fail to start if these directories do not exist on the host.
-    // You can create them with `mkdir -p ~/.aws` and `mkdir -p ~/.local/share/amazon-q`
-  ],
+1. **Create a Dockerfile** named `Dockerfile.amazonq` in your project root:
+   ```dockerfile
+   # Dockerfile for Base Container with Amazon Q CLI pre-installed
+   FROM ghcr.io/jbearak/base-container:latest
 
-  // Set container timezone from host
-  "containerEnv": {
-    "TZ": "${localEnv:TZ}"
-  },
+   # Switch to the me user for installation
+   USER me
+   WORKDIR /home/me
 
-  // Install Amazon Q CLI on container creation
-  "postCreateCommand": "curl -sSL https://aws-cli-q-installer.s3.amazonaws.com/q-installer-linux-arm64.tar.gz | tar -xz && sudo ./q-installer-linux-arm64/install && rm -rf ./q-installer-linux-arm64"
-}
-```
+   # Install Amazon Q CLI during image build
+   RUN curl --proto '=https' --tlsv1.2 -sSf \
+      'https://desktop-release.q.us-east-1.amazonaws.com/latest/q-aarch64-linux.zip' \
+      -o 'q.zip' && \
+      unzip q.zip && \
+      chmod +x ./q/install.sh && \
+      ./q/install.sh --no-confirm && \
+      rm -rf q.zip q
 
-**Important Setup Notes:**
-- Create the required directories on your host before starting the container:
-  ```bash
-  mkdir -p ~/.aws ~/.local/share/amazon-q
-  ```
-- After the container starts, authenticate with Amazon Q:
-  ```bash
-  q auth
-  ```
+   # Ensure Q CLI is in PATH for all users
+   ENV PATH="/home/me/.local/bin:$PATH"
+   ```
+
+2. **Build your custom image:**
+   ```bash
+   docker build -f Dockerfile.amazonq -t my-base-container-amazonq .
+   ```
+
+3. **Create folders for persistent configuration:**
+   ```bash
+   mkdir -p ~/.container-aws ~/.container-amazon-q
+   ```
+
+4. **Update your `.devcontainer/devcontainer.json`:**
+   ```jsonc
+   {
+     "name": "Base Container with Amazon Q CLI",
+     "image": "my-base-container-amazonq:latest",
+     "remoteUser": "me",
+     "updateRemoteUserUID": true,
+     "mounts": [
+       "source=${localEnv:HOME}/.gitconfig,target=/home/me/.gitconfig,type=bind,readonly",
+       "source=${localEnv:HOME}/.container-aws,target=/home/me/.aws,type=bind",
+       "source=${localEnv:HOME}/.container-amazon-q,target=/home/me/.local/share/amazon-q,type=bind"
+     ],
+     "containerEnv": { "TZ": "${localEnv:TZ}" }
+   }
+   ```
+
+### Option 2: PostCreateCommand (Simple but slower)
+
+If you prefer not to build a custom image, you can install Q CLI on container startup:
+
+1. **Create folders for persistent configuration:**
+   ```bash
+   mkdir -p ~/.container-aws ~/.container-amazon-q
+   ```
+
+2. **Update your `.devcontainer/devcontainer.json`:**
+   ```jsonc
+   {
+     "name": "Base Container with Amazon Q CLI",
+     "image": "ghcr.io/jbearak/base-container:latest",
+     "remoteUser": "me",
+     "updateRemoteUserUID": true,
+     "mounts": [
+       "source=${localEnv:HOME}/.gitconfig,target=/home/me/.gitconfig,type=bind,readonly",
+       "source=${localEnv:HOME}/.container-aws,target=/home/me/.aws,type=bind",
+       "source=${localEnv:HOME}/.container-amazon-q,target=/home/me/.local/share/amazon-q,type=bind"
+     ],
+     "containerEnv": { "TZ": "${localEnv:TZ}" },
+     "postCreateCommand": "curl --proto '=https' --tlsv1.2 -sSf 'https://desktop-release.q.us-east-1.amazonaws.com/latest/q-aarch64-linux.zip' -o 'q.zip' && unzip q.zip && ./q/install.sh && rm -rf q.zip q"
+   }
+   ```
+
+**Note:** Option 1 is recommended as it pre-installs Q CLI during image build, making container startup much faster. Option 2 reinstalls Q CLI every time the container starts.
 
 ## License
 
