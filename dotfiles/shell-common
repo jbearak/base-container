@@ -1,0 +1,3 @@
+# R library path configuration
+# Add system-wide R library directory to R's library search path
+export R_LIBS_SITE="/usr/local/lib/R/site-library"

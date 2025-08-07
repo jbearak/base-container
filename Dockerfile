@@ -904,9 +904,6 @@ RUN chmod +x /tmp/install_r_packages.sh && \
         /tmp/install_r_packages.sh; \
     fi
 
-# Switch back to the 'me' user for the final container
-USER me
-
 # ===========================================================================
 # STAGE 10: PYTHON 3.13 INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py)
 # ===========================================================================
@@ -943,7 +940,6 @@ RUN set -e; \
     # Clean up
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Switch back to the 'me' user
 USER me
 
 # ===========================================================================
@@ -954,6 +950,15 @@ USER me
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py AS full
+
+# Copy and apply shell configuration (switch to root for file operations)
+USER root
+COPY dotfiles/shell-common /tmp/shell-common
+RUN cat /tmp/shell-common >> /home/me/.bashrc && \
+    cat /tmp/shell-common >> /home/me/.zshrc && \
+    echo 'R_LIBS_SITE="/usr/local/lib/R/site-library"' >> /etc/environment && \
+    chown me:users /home/me/.bashrc /home/me/.zshrc && \
+    rm /tmp/shell-common
 
 # Switch to the 'me' user for the final container
 USER me
