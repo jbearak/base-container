@@ -933,10 +933,10 @@ RUN set -e; \
     apt-get install -y --no-install-recommends \
         python3.13 \
         python3.13-dev \
-        python3.13-venv \
-        python3.13-distutils && \
-    # Create symlinks for python3.13
-    update-alternatives --install /usr/bin/python3.13 python3.13 /usr/bin/python3.13 1 && \
+        python3.13-venv && \
+    # Install pip and setuptools for Python 3.13 (avoid upgrade conflicts)
+    python3.13 -m ensurepip && \
+    python3.13 -m pip install setuptools && \
     # Verify installation
     python3.13 --version && \
     echo "✅ Python 3.13 installed successfully" && \
