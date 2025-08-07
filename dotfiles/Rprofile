@@ -1,5 +1,18 @@
+# Source renv activation if it exists
+if (file.exists("renv/activate.R")) {
+  source("renv/activate.R")
+}
+# If using renv, create symlinks to system libraries instead of
+# downloading packages
+options(renv.config.install.shortcuts = TRUE)
+
+# Always ensure system library is in the path (after renv activation)
 .libPaths(c(.libPaths(), "/usr/local/lib/R/site-library"))
+
+# Disable tcl/tk menu; just print question in console
 options(menu.graphics=FALSE)
+
+# If in an interactive session, load the 'colorout' package for colored
 if (.Platform$OS.type == "unix" && (interactive() || isatty(stdout()))) {
     try(library("colorout"))
 }
