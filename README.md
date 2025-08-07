@@ -35,6 +35,14 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
    colima start --vm-type vz --mount-type virtiofs
    ```
    
+   By default, Colima allocates only 2 CPU cores and 2 GB RAM. For better performance, you can specify more resources, for example:
+   ```
+   colima stop
+   colima delete
+   colima start --vm-type vz --mount-type virtiofs --cpu 16 --memory 128
+   ```
+   Adjust the values to match your system's capabilities.
+
    Once configured this way, Colima will remember these settings and use `vz` for future starts.
 
 ### Container Setup
