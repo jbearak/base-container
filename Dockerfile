@@ -1054,5 +1054,8 @@ RUN cat /tmp/shell-common >> /home/me/.bashrc && \
     chown me:users /home/me/.bashrc /home/me/.zshrc && \
     rm /tmp/shell-common
 
+
+# Create vscode home directory as symlink to /home/me for dev container compatibility
+RUN useradd -u 1000 -o -g $(id -gn 1000) -s /bin/zsh vscode && ln -sf /home/me /home/vscode
 # Switch to the 'me' user for the final container
 USER me
