@@ -25,7 +25,7 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
    brew services start colima
    ```
 
-3. **Important: Reconfigure for proper UID/GID mapping**
+3. **Reconfigure for proper UID/GID mapping**
    
    The initial installation uses SSHFS, which causes permission errors when accessing project files from within the container. You need to reconfigure Colima to use the `vz` virtualization framework:
    
@@ -44,6 +44,25 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
    Adjust the values to match your system's capabilities.
 
    Once configured this way, Colima will remember these settings and use `vz` for future starts.
+
+4. **Set Colima as the default Docker context:**
+   
+   This makes Colima the default for all Docker commands and ensures VS Code's Dev Containers extension works properly:
+   
+   ```bash
+   docker context use colima
+   ```
+   
+   You can verify the active context with:
+   ```bash
+   docker context ls
+   ```
+
+   You can also append to your ~/.zshrc:
+
+   ```zsh
+   export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+   ```
 
 ### Container Setup
 
