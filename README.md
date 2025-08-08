@@ -193,6 +193,9 @@ docker run -d --name "$PROJECT_NAME" --hostname "$PROJECT_NAME" --restart unless
 docker exec -it "$PROJECT_NAME" bash -lc "tmux new -A -s '$PROJECT_NAME'"
 # Inside tmux: Rscript long_analysis.R 2>&1 | tee -a logs/run.log
 # Detach: Ctrl-b then d
+
+# When finished, stop the container
+docker stop "$PROJECT_NAME" && docker rm "$PROJECT_NAME"
 ```
 
 ### VS Code workflow
