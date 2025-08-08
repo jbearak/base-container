@@ -236,17 +236,6 @@ In `.devcontainer/devcontainer.json`:
   "postAttachCommand": "tmux new -A -s analysis"
 }
 ```
-```
-
-### VS Code workflow
-In `.devcontainer/devcontainer.json`:
-```jsonc
-{
-  "shutdownAction": "none",
-  "init": true,
-  "postAttachCommand": "tmux new -A -s analysis"
-}
-```
 
 **Limitations:** Reboots terminate all processes. Container auto-restarts but jobs must be resumed manually. Use checkpointing for critical work.
 
