@@ -79,15 +79,16 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
 
 The container will automatically download and start your development environment.
 
-# Using the Container with an Agentic Coding Tool
+
+## Using the Container with an Agentic Coding Tool
 
 To use an agentic coding tool, modify devcontainer.json to include the necessary mounts and post-create commands to install the tool.
 
-## Amazon Q CLI Integration
+### Amazon Q CLI Integration
 
 As an example, here is how to integrate the Amazon Q CLI into your dev container. There are two approaches:
 
-### Option 1: Custom Docker Image (Recommended)
+#### Option 1: Custom Docker Image (Recommended)
 
 Build a custom image that extends the base container with Q CLI pre-installed:
 
@@ -139,7 +140,7 @@ Build a custom image that extends the base container with Q CLI pre-installed:
    }
    ```
 
-### Option 2: PostCreateCommand (Simple but slower)
+#### Option 2: PostCreateCommand (Simple but slower)
 
 If you prefer not to build a custom image, you can install Q CLI on container startup:
 
@@ -166,6 +167,43 @@ If you prefer not to build a custom image, you can install Q CLI on container st
    ```
 
 **Note:** Option 1 is recommended as it pre-installs Q CLI during image build, making container startup much faster. Option 2 reinstalls Q CLI every time the container starts.
+
+
+## Research containers with tmux
+
+For multi-day analyses, keep containers running with tmux sessions to survive disconnections (but not reboots).
+
+**Key practices:**
+- Use `--init` for proper signal handling during long runs
+- Mount your project directory for data persistence  
+- Center workflow around tmux for resilient sessions
+- Implement checkpointing for analyses longer than uptime between reboots
+
+### Terminal workflow
+```bash
+# Start persistent container
+docker run -d --name research --restart unless-stopped --init \
+  -v "$(pwd)":/workspaces/project -w /workspaces/project \
+  base-container:full sleep infinity
+
+# Work in tmux
+docker exec -it research bash -lc "tmux new -A -s analysis"
+# Inside tmux: Rscript long_analysis.R 2>&1 | tee -a logs/run.log
+# Detach: Ctrl-b then d
+```
+
+### VS Code workflow
+In `.devcontainer/devcontainer.json`:
+```jsonc
+{
+  "shutdownAction": "none",
+  "init": true,
+  "postAttachCommand": "tmux new -A -s analysis"
+}
+```
+
+**Limitations:** Reboots terminate all processes. Container auto-restarts but jobs must be resumed manually. Use checkpointing for critical work.
+
 
 ## License
 
