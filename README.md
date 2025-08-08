@@ -219,6 +219,14 @@ docker stop "$PROJECT_NAME" && docker rm "$PROJECT_NAME"
 
 If you start the container using the terminal workflow and then open it from VS Code (the "Reopen in Container" action), Code will treat this like connecting to a host without having specified a workspace. Press "Open..." and enter your project directory (`/workspaces/$PROJECT_NAME`).
 
+Configure Git to avoid permission issues:
+
+```bash
+git config --global --add safe.directory "/workspaces/$PROJECT_NAME"
+```
+
+This allows Git to operate in /workspaces/ when ownership or permissions differ, as is common in containers.
+
 ### VS Code workflow
 In `.devcontainer/devcontainer.json`:
 ```jsonc
