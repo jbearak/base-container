@@ -181,29 +181,15 @@ For multi-day analyses, keep containers running with tmux sessions to survive di
 
 ### Terminal workflow
 ```bash
-# Set project name from current directory
-PROJECT_NAME=$(basename "$(pwd)")
-
 # Start persistent container
-docker run -d --name "$PROJECT_NAME" --hostname "$PROJECT_NAME" --restart unless-stopped --init \
-  -v "$(pwd)":"/workspaces/$PROJECT_NAME" -w "/workspaces/$PROJECT_NAME" \
+docker run -d --name research --restart unless-stopped --init \
+  -v "$(pwd)":/workspaces/project -w /workspaces/project \
   base-container:full sleep infinity
 
 # Work in tmux
-docker exec -it "$PROJECT_NAME" bash -lc "tmux new -A -s '$PROJECT_NAME'"
+docker exec -it research bash -lc "tmux new -A -s analysis"
 # Inside tmux: Rscript long_analysis.R 2>&1 | tee -a logs/run.log
 # Detach: Ctrl-b then d
-```
-
-### VS Code workflow
-In `.devcontainer/devcontainer.json`:
-```jsonc
-{
-  "shutdownAction": "none",
-  "init": true,
-  "postAttachCommand": "tmux new -A -s analysis"
-}
-```
 ```
 
 ### VS Code workflow
