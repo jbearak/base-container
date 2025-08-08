@@ -217,6 +217,8 @@ docker exec -it "$PROJECT_NAME" bash -lc "tmux new -A -s '$PROJECT_NAME'"
 docker stop "$PROJECT_NAME" && docker rm "$PROJECT_NAME"
 ```
 
+If you start the container using the terminal workflow and then open it from VS Code (the "Reopen in Container" action), Code will treat this like connecting to a host without having specified a workspace. Press "Open..." and enter your project directory (`/workspaces/$PROJECT_NAME`).
+
 ### VS Code workflow
 In `.devcontainer/devcontainer.json`:
 ```jsonc
