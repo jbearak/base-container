@@ -206,7 +206,7 @@ PROJECT_NAME=$(basename "$(pwd)")
 # Start persistent container
 docker run -d --name "$PROJECT_NAME" --hostname "$PROJECT_NAME" --restart unless-stopped --init \
   -v "$(pwd)":"/workspaces/$PROJECT_NAME" -w "/workspaces/$PROJECT_NAME" \
-  base-container:full sleep infinity
+  ghcr.io/jbearak/base-container:latest sleep infinity
 
 # Work in tmux
 docker exec -it "$PROJECT_NAME" bash -lc "tmux new -A -s '$PROJECT_NAME'"
