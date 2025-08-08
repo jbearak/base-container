@@ -228,7 +228,10 @@ git config --global --add safe.directory "/workspaces/$PROJECT_NAME"
 This allows Git to operate in /workspaces/ when ownership or permissions differ, as is common in containers.
 
 ### VS Code workflow
-In `.devcontainer/devcontainer.json`:
+If you began with the terminal workflow, you can attach to the running container from VS Code. Choose "Remote-Containers: Attach to Running Container..." from the Command Palette.
+
+If you use VS Code to create the container, add the following to your `.devcontainer/devcontainer.json` file:
+
 ```jsonc
 {
   "shutdownAction": "none",
