@@ -1112,13 +1112,15 @@ RUN cat /tmp/shell-common >> /home/me/.bashrc && \
     chown me:users /home/me/.bashrc /home/me/.zshrc && \
     rm /tmp/shell-common /tmp/zshrc_appends
 
-
-# Create vscode home directory as symlink to /home/me for dev container compatibility
-RUN useradd -u 1000 -o -g $(id -gn 1000) -s /bin/zsh vscode && ln -sf /home/me /home/vscode
-
-# Create and set default working directory at the end to preserve build cache
+# Create and set default working directory
 RUN mkdir -p /workspace && chown me:users /workspace
 WORKDIR /workspace
+
+# Keep shell as bash for RUN commands,
+# while making zsh the default for interactive sessions
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV SHELL=/bin/zsh
+CMD ["/bin/zsh", "-l"]
 
 # Switch to the 'me' user for the final container
 USER me
