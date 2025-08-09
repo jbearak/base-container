@@ -9,3 +9,30 @@ export RENV_CONFIG_EXTERNAL_LIBRARIES="/usr/local/lib/R/site-library"
 export RENV_CONFIG_INSTALL_SHORTCUTS="TRUE"
 # Aliases for improved command-line tools
 alias bat='batcat'  # Ubuntu installs bat as batcat to avoid naming conflicts
+
+# Git aliases
+alias g='git'
+alias gs='git status'
+alias gst='git status'
+alias gsh='git show'
+alias gd='git diff'
+alias gdc='git diff --cached'
+alias ga='git add'
+alias g.='git add .'
+alias gc='git commit'
+alias gca='git commit -a'
+alias gco='git checkout'
+alias gsw='git switch'
+alias gb='git branch'
+alias gbr='git branch'
+alias gp='git push'
+alias gpu='git push'
+alias gpl='git pull'
+alias gl='git log'
+alias glg='git log --oneline --graph --decorate'
+alias gsu='git submodule update --init --recursive'
+alias gcl='git clone --recurse-submodules -j8'
+
+# Neovim aliases
+alias vim='nvim'
+alias vi='nvim'
