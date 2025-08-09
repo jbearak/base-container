@@ -383,6 +383,61 @@ RUN set -e; \
     nvim --version | head -n 1
 
 # ---------------------------------------------------------------------------
+# Install zoxide from GitHub releases
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) ZOX_DEB_ARCH="amd64" ;; \
+      arm64) ZOX_DEB_ARCH="arm64" ;; \
+      *) echo "Unsupported arch for zoxide: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/ajeetdsouza/zoxide/releases/latest); \
+    ZOX_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing zoxide version: ${ZOX_VERSION}"; \
+    # zoxide assets are typically named like zoxide_${VERSION#v}-1_${ARCH}.deb
+    ZOX_DEB_URL="$(echo "$RELEASE_INFO" | grep browser_download_url | grep -E "zoxide_.*_${ZOX_DEB_ARCH}\\.deb" | head -n 1 | cut -d '"' -f 4)"; \
+    if [ -z "$ZOX_DEB_URL" ]; then \
+      echo "❌ Could not find zoxide .deb for arch ${ZOX_DEB_ARCH}"; exit 1; \
+    fi; \
+    echo "Downloading zoxide .deb from: ${ZOX_DEB_URL}"; \
+    curl -fsSL "$ZOX_DEB_URL" -o /tmp/zoxide.deb; \
+    ZOX_SHA256=$(sha256sum /tmp/zoxide.deb | cut -d' ' -f1); \
+    echo "zoxide .deb SHA256: ${ZOX_SHA256}"; \
+    apt-get update -qq && apt-get install -y --no-install-recommends /tmp/zoxide.deb && \
+    rm /tmp/zoxide.deb && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    zoxide --version
+
+# ---------------------------------------------------------------------------
+# Install Zsh plugins via git clone of latest release tags
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    mkdir -p /usr/local/share/zsh/plugins; \
+    # ----------------------------- zsh-completions ---------------------------
+    ZC_REL=$(curl -fsSL https://api.github.com/repos/zsh-users/zsh-completions/releases/latest); \
+    ZC_TAG=$(echo "$ZC_REL" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing zsh-completions ${ZC_TAG} via git clone"; \
+    rm -rf /tmp/zsh-completions; \
+    git clone --depth 1 --branch "$ZC_TAG" https://github.com/zsh-users/zsh-completions.git /tmp/zsh-completions; \
+    mkdir -p /usr/local/share/zsh/plugins/zsh-completions; \
+    cp -a /tmp/zsh-completions/* /usr/local/share/zsh/plugins/zsh-completions/; \
+    rm -rf /tmp/zsh-completions; \
+    # ---------------------- zsh-history-substring-search ---------------------
+    ZH_REL=$(curl -fsSL https://api.github.com/repos/zsh-users/zsh-history-substring-search/releases/latest); \
+    ZH_TAG=$(echo "$ZH_REL" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    echo "Installing zsh-history-substring-search ${ZH_TAG} via git clone"; \
+    rm -rf /tmp/zsh-hss; \
+    git clone --depth 1 --branch "$ZH_TAG" https://github.com/zsh-users/zsh-history-substring-search.git /tmp/zsh-hss; \
+    mkdir -p /usr/local/share/zsh/plugins/zsh-history-substring-search; \
+    cp -a /tmp/zsh-hss/* /usr/local/share/zsh/plugins/zsh-history-substring-search/; \
+    rm -rf /tmp/zsh-hss; \
+    # ------------------------------ verify ----------------------------------
+    test -d /usr/local/share/zsh/plugins/zsh-completions/src && \
+    test -f /usr/local/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh && \
+    echo "✅ Zsh plugins installed"
+
+# ---------------------------------------------------------------------------
 # R installation from CRAN
 # ---------------------------------------------------------------------------
 # Ubuntu's default R version is often outdated. We add the official CRAN
@@ -1048,11 +1103,14 @@ FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py AS full
 # Copy and apply shell configuration (switch to root for file operations)
 USER root
 COPY dotfiles/shell-common /tmp/shell-common
+COPY dotfiles/zshrc_appends /tmp/zshrc_appends
 RUN cat /tmp/shell-common >> /home/me/.bashrc && \
     cat /tmp/shell-common >> /home/me/.zshrc && \
+    # Append Zsh-specific plugin config
+    cat /tmp/zshrc_appends >> /home/me/.zshrc && \
     echo 'R_LIBS_SITE="/usr/local/lib/R/site-library"' >> /etc/environment && \
     chown me:users /home/me/.bashrc /home/me/.zshrc && \
-    rm /tmp/shell-common
+    rm /tmp/shell-common /tmp/zshrc_appends
 
 
 # Create vscode home directory as symlink to /home/me for dev container compatibility

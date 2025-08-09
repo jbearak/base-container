@@ -1,0 +1,40 @@
+# Zsh plugin and tool configuration
+#
+# This file is appended to ~/.zshrc in the final stage.
+# It assumes plugin code is installed under /usr/local/share/zsh/plugins.
+
+# Ensure zsh knows where to find completions
+fpath=(/usr/local/share/zsh/plugins/zsh-completions/src $fpath)
+
+# Initialize completion system
+autoload -Uz compinit
+# Use a separate cache dir that is writable by the user
+ZDOTDIR=${ZDOTDIR:-$HOME}
+ZSH_CACHE_DIR="$ZDOTDIR/.zcompcache"
+mkdir -p "$ZSH_CACHE_DIR"
+compinit -d "$ZSH_CACHE_DIR/.zcompdump"
+
+# Bindings and setup for history-substring-search
+# Plugin path: /usr/local/share/zsh/plugins/zsh-history-substring-search
+fpath=(/usr/local/share/zsh/plugins/zsh-history-substring-search $fpath)
+source /usr/local/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
+
+# Better key bindings (work in most terminals)
+bindkey '^[[A' history-substring-search-up
+bindkey '^[[B' history-substring-search-down
+
+# zoxide initialization (better cd)
+if command -v zoxide >/dev/null 2>&1; then
+    eval "$(zoxide init zsh)"
+    # Convenience aliases
+    alias cd='z'
+    alias cdi='zi'
+fi
+
+# fd is already installed as fdfind; ensure fd alias exists in PATH
+# Avoid overriding if user already set it elsewhere
+if ! command -v fd >/dev/null 2>&1 && command -v fdfind >/dev/null 2>&1; then
+    # Add ~/.local/bin to PATH (the Dockerfile also creates a symlink there)
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
