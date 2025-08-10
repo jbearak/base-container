@@ -555,7 +555,7 @@ RUN set -e; \
     usermod -d /home/me me; \
     # Add 'me' to the same supplementary groups as 'vscode'
     for my_grp in $(echo "${VS_GROUPS}" | tr ',' ' '); do \
-        [ "${my_grp}" = "${VS_PRIMARY_GROUP_NAME}" ] && continue; \
+        if [ "${my_grp}" = "${VS_PRIMARY_GROUP_NAME}" ]; then continue; fi; \
         usermod -aG "${my_grp}" me || true; \
     done; \
     # Ensure ownership matches the shared UID/GID
@@ -1137,7 +1137,7 @@ RUN cat /tmp/shell-common >> /home/me/.bashrc && \
     rm /tmp/shell-common /tmp/zshrc_appends
 
 # Create and set default working directory
-RUN mkdir -p /workspace && chown me:me /workspace
+RUN mkdir -p /workspaces && chown me:me /workspaces
 WORKDIR /workspaces
 
 # Keep shell as bash for RUN commands,
