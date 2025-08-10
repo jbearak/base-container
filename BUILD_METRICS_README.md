@@ -105,8 +105,6 @@ Overall Build Statistics
 Build Optimization Recommendations
 ⚠️  Long build detected (>30 minutes for slowest stage)
    Consider optimizing the '...ell-crossref-plus-r' stage
-   💡 R packages can be cached to reduce build time - consider using multi-stage builds
-      with a dedicated R package layer that changes less frequently
 
 Build metrics analysis complete!
 ```

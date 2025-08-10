@@ -8,7 +8,6 @@
   // Use non-root user "me". Set to "root" if needed.
   "remoteUser": "me",
   "updateRemoteUserUID": true,
-  "shutdownAction": "none",
 
   // Mount local Git config for container Git usage
   "mounts": [
