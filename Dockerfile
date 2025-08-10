@@ -1222,7 +1222,8 @@ USER root
 # ---------------------------------------------------------------------------
 # Python 3.13 installation using deadsnakes PPA
 # ---------------------------------------------------------------------------
-# The deadsnakes PPA provides the latest Python versions for Ubuntu
+# The deadsnakes PPA provides the latest Python versions for Ubuntu.
+# We install Python 3.13 and let it manage the pip installation.
 # ---------------------------------------------------------------------------
 RUN set -e; \
     echo "Adding deadsnakes PPA for Python 3.13..."; \
@@ -1235,13 +1236,17 @@ RUN set -e; \
         python3.13 \
         python3.13-dev \
         python3.13-venv && \
-    # Install pip and setuptools for Python 3.13 (avoid upgrade conflicts)
+    # Update alternatives to make python3.13 the default python3
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 2 && \
+    # Install pip using Python 3.13's built-in ensurepip (without upgrade to avoid conflicts)
     python3.13 -m ensurepip && \
-    python3.13 -m pip install setuptools && \
-    python3.13 -m pip install --upgrade pip && \
+    # Install common development tools
     python3.13 -m pip install black flake8 mypy isort && \
     # Verify installation
+    python3 --version && \
     python3.13 --version && \
+    python3.13 -m pip --version && \
     echo "✅ Python 3.13 installed successfully" && \
     # Clean up
     apt-get clean && rm -rf /var/lib/apt/lists/*
