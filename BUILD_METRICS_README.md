@@ -88,11 +88,11 @@ Stage  Name                             Duration     Cumulative   Start Size   E
 3      base-nvim-vscode                 5m 42s       16m 20s      2.9G         3.2G         +0.3G         
 4      base-nvim-vscode-tex             12m 8s       28m 28s      3.2G         5.1G         +1.9G         
 5      base-nvim-vscode-tex-pandoc      1m 33s       30m 1s       5.1G         5.2G         +0.1G         
-6      base-nvim-vscode-tex-pandoc-...  3m 45s       33m 46s      5.2G         5.4G         +0.2G         
-7      base-nvim-vscode-tex-pandoc-...  7m 12s       40m 58s      5.4G         5.4G         +0.0G         
-8      base-nvim-vscode-tex-pandoc-...  2m 5s        43m 3s       5.4G         5.5G         +0.1G         
-9      base-nvim-vscode-tex-pandoc-...  45m 12s      1h 28m 15s   5.5G         6.8G         +1.3G         
-10     base-nvim-vscode-tex-pandoc-...  2m 18s       1h 30m 33s   6.8G         6.9G         +0.1G         
+6      ...tex-pandoc-haskell             3m 45s       33m 46s      5.2G         5.4G         +0.2G         
+7      ...doc-haskell-crossref          7m 12s       40m 58s      5.4G         5.4G         +0.0G         
+8      ...askell-crossref-plus          2m 5s        43m 3s       5.4G         5.5G         +0.1G         
+9      ...ell-crossref-plus-r           45m 12s      1h 28m 15s   5.5G         6.8G         +1.3G         
+10     ...crossref-plus-r-py            2m 18s       1h 30m 33s   6.8G         6.9G         +0.1G         
 11     full                            0m 45s       1h 31m 18s   6.9G         6.9G         +0.0G         
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -104,18 +104,20 @@ Overall Build Statistics
 
 Build Optimization Recommendations
 ⚠️  Long build detected (>30 minutes for slowest stage)
-   Consider optimizing the 'base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r' stage
+   Consider optimizing the '...ell-crossref-plus-r' stage
+   💡 R packages can be cached to reduce build time - consider using multi-stage builds
+      with a dedicated R package layer that changes less frequently
 
 Build metrics analysis complete!
 ```
 
-### Color Coding
+### Performance Analysis
 
-The summary table uses color coding to highlight performance:
+The script analyzes stage performance and provides recommendations:
 
-- 🟢 **Green**: Stages completed in under 10 minutes
-- 🟡 **Yellow**: Stages that took 10-30 minutes  
-- 🔴 **Red**: Stages that took over 30 minutes
+- Stages under 10 minutes are considered optimal
+- Stages taking 10-30 minutes may benefit from optimization
+- Stages over 30 minutes should be prioritized for improvement
 
 ## Manual Metrics Extraction
 

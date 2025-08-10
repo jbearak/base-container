@@ -5,10 +5,9 @@
   // For Colima on macOS, use vz for correct UID/GID mapping:
   // colima stop; colima delete; colima start --vm-type vz --mount-type virtiofs
 
-  // Use non-root user "me" (alias of 'vscode' with same UID/GID). Set to "root" if needed.
+  // Use non-root user "me". Set to "root" if needed.
   "remoteUser": "me",
   "updateRemoteUserUID": true,
-  "init": true,
   "shutdownAction": "none",
 
   // Mount local Git config for container Git usage

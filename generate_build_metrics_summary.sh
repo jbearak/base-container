@@ -194,8 +194,14 @@ extract_metrics() {
             color="$GREEN"
         fi
         
+        # Left-truncate stage name if longer than 32 characters
+        local display_name="$stage_name"
+        if [ ${#stage_name} -gt 32 ]; then
+            display_name="...${stage_name: -29}"
+        fi
+        
         printf "${color}%-6s${NC} %-35s ${color}%-12s${NC} %-12s %-12s %-12s %-15s\\n" \
-               "$stage_num" "$stage_name" "$duration_formatted" "$cumulative_formatted" \
+               "$stage_num" "$display_name" "$duration_formatted" "$cumulative_formatted" \
                "$size_start" "$size_end" "$size_change"
     done
     

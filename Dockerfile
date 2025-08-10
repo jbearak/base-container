@@ -1,5 +1,5 @@
 # ===========================================================================
-# MULTI-STAGE R base-container IMAGE WITH BUILD METRICS
+# MULTI-STAGE R base-container IMAGE
 # ===========================================================================
 # Purpose   : Build a containerized R development environment optimized for
 #             VS Code and the Dev Containers extension.  This Dockerfile uses
@@ -1237,6 +1237,7 @@ RUN set -e; \
         python3.13-dev \
         python3.13-venv && \
     # Update alternatives to make python3.13 the default python3
+    # Note: python3 defaults to the alternative with the highest priority number
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 2 && \
     # Install pip using Python 3.13's built-in ensurepip (without upgrade to avoid conflicts)
