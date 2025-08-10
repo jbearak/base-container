@@ -794,6 +794,26 @@ RUN set -e; \
         librsvg2-bin && \
     # Ensure font maps are up to date so XeTeX can find Zapf Dingbats (pzdr)
     updmap-sys || true; \
+    # Remove LaTeX documentation to reduce image size
+    echo "Removing LaTeX documentation to reduce image size..."; \
+    rm -rf /usr/share/texlive/texmf-dist/doc || true; \
+    rm -rf /usr/share/doc/texlive* || true; \
+    rm -rf /usr/share/man/man*/tex* || true; \
+    rm -rf /usr/share/man/man*/latex* || true; \
+    rm -rf /usr/share/man/man*/dvips* || true; \
+    rm -rf /usr/share/man/man*/xetex* || true; \
+    rm -rf /usr/share/man/man*/luatex* || true; \
+    rm -rf /usr/share/info/latex* || true; \
+    rm -rf /usr/share/texmf/doc || true; \
+    # Remove source files that aren't needed at runtime
+    find /usr/share/texlive/texmf-dist -name '*.dtx' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name '*.ins' -delete || true; \
+    # Remove readme and changelog files
+    find /usr/share/texlive/texmf-dist -name 'README*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'CHANGES*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'ChangeLog*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'HISTORY*' -delete || true; \
+    echo "✅ LaTeX documentation cleanup completed"; \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -1006,6 +1026,17 @@ RUN set -e; \
     # First try to install soul directly from system packages
     apt-get update -qq && \
     apt-get install -y --no-install-recommends texlive-pictures texlive-latex-recommended; \
+    # Remove documentation from additional LaTeX packages
+    echo "Removing documentation from additional LaTeX packages..."; \
+    rm -rf /usr/share/texlive/texmf-dist/doc || true; \
+    rm -rf /usr/share/doc/texlive* || true; \
+    find /usr/share/texlive/texmf-dist -name '*.dtx' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name '*.ins' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'README*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'CHANGES*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'ChangeLog*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'HISTORY*' -delete || true; \
+    echo "✅ Additional LaTeX documentation cleanup completed"; \
     # Clean up
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
