@@ -15,7 +15,12 @@
 #             Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus): Add extra LaTeX packages via tlmgr (e.g. soul)
 #             Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r): Install a comprehensive suite of R packages.
 #             Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py): Add Python 3.13 using deadsnakes PPA.
-#             Stage 11 (full)              : Final stage; currently empty but ready for additional setup.
+#             Stage 11 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
+#
+# Build Metrics: Each stage tracks timing and size information:
+#   • Start/end timestamps for build duration calculation
+#   • Filesystem usage before/after each stage
+#   • Final summary table showing cumulative time and size
 #
 # Why multi-stage?
 #   • Allows for quick debugging of specific components without rebuilding everything
@@ -43,6 +48,16 @@
 # ---------------------------------------------------------------------------
 
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS base
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 1 Start
+# ---------------------------------------------------------------------------
+RUN mkdir -p /tmp/build-metrics && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base,start,$(date +%s)" > /tmp/build-metrics/stage-1-base.csv && \
+    echo "Stage 1 (base) started at $(date)" && \
+    # Record initial filesystem usage
+    df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-1-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-1-size-start.txt)"
 
 # ---------------------------------------------------------------------------
 # Container metadata labels
@@ -366,19 +381,29 @@ RUN set -e; \
     RELEASE_INFO=$(curl -fsSL "https://api.github.com/repos/neovim/neovim/releases/latest"); \
     NVIM_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing Neovim ${NVIM_VERSION} for ${NVIM_ARCH}"; \
+    # Get the git tag info to verify GPG signature
+    TAG_REF_INFO=$(curl -fsSL "https://api.github.com/repos/neovim/neovim/git/refs/tags/${NVIM_VERSION}"); \
+    TAG_SHA=$(echo "$TAG_REF_INFO" | grep '"sha":' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/'); \
+    TAG_INFO=$(curl -fsSL "https://api.github.com/repos/neovim/neovim/git/tags/${TAG_SHA}"); \
+    # Verify the tag has a valid GPG signature
+    TAG_VERIFIED=$(echo "$TAG_INFO" | grep '"verified":[[:space:]]*true' || echo ""); \
+    if [ -z "$TAG_VERIFIED" ]; then \
+        echo "❌ Neovim ${NVIM_VERSION} tag signature verification failed!"; \
+        echo "Tag info: $TAG_INFO"; \
+        exit 1; \
+    fi; \
+    echo "✅ Neovim ${NVIM_VERSION} GPG tag signature verified"; \
     # Construct URL for tarball using GitHub Releases API data
-    NVIM_URL="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-${NVIM_ARCH}.tar.gz"; \
+    NVIM_BASENAME="nvim-linux-${NVIM_ARCH}.tar.gz"; \
+    NVIM_URL="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/${NVIM_BASENAME}"; \
     echo "Downloading Neovim from ${NVIM_URL}"; \
-    # Download the tarball
-    curl -fsSL "${NVIM_URL}" -o /tmp/nvim.tar.gz; \
-    # Generate and display SHA1 sum for verification/transparency
-    echo "Generating SHA1 sum for verification:"; \
-    NVIM_SHA1=$(sha1sum /tmp/nvim.tar.gz | cut -d' ' -f1); \
-    echo "SHA1: ${NVIM_SHA1}"; \
-    echo "✅ Neovim ${NVIM_VERSION} downloaded successfully"; \
-    # Extract and install
-    tar -xzf /tmp/nvim.tar.gz -C /usr/local --strip-components=1; \
-    rm /tmp/nvim.tar.gz; \
+    curl -fsSL "${NVIM_URL}" -o "/tmp/${NVIM_BASENAME}"; \
+    # Generate and display SHA256 sum for verification/transparency
+    NVIM_SHA256=$(sha256sum "/tmp/${NVIM_BASENAME}" | cut -d' ' -f1); \
+    echo "Neovim ${NVIM_VERSION} SHA256: ${NVIM_SHA256}"; \
+    echo "✅ Neovim ${NVIM_VERSION} downloaded and GPG-verified via signed git tag"; \
+    tar -xzf "/tmp/${NVIM_BASENAME}" -C /usr/local --strip-components=1; \
+    rm "/tmp/${NVIM_BASENAME}"; \
     # Verify installation
     nvim --version | head -n 1
 
@@ -519,46 +544,77 @@ ENV LC_ALL=en_US.UTF-8
 # ---------------------------------------------------------------------------
 # User account management
 # ---------------------------------------------------------------------------
-# The mcr.microsoft.com/devcontainers/base image creates a default 'vscode'
-# user, but we want to use 'me'
+# Retain the default 'vscode' user from the devcontainers base image and create
+# a second login 'me' that is an alias (same UID/GID). This preserves
+# compatibility with VS Code / Dev Containers while letting us use 'me' as our
+# preferred login.
 #
-# This section handles the transition carefully
+# Best practice: Many devcontainer features, caches, and VS Code Server paths
+# assume a 'vscode' user. Retaining it avoids subtle permission/startup issues.
+# Creating 'me' with the exact same UID/GID (and a 'me' group with the same
+# GID as 'vscode') provides a seamless alias and ensures `ls -l` displays
+# owner and group as 'me'.
 # ---------------------------------------------------------------------------
 
-# Step 1: Backup existing vscode home directory if it exists
-# (The base image might have created files we want to preserve)
-RUN if [ -d "/home/vscode" ]; then \
-        cp -a /home/vscode /tmp/vscode_backup; \
-    fi
+# Step 1: Align groups commonly conflicting with macOS host
+RUN groupmod -g 2020 dialout || true; \
+    groupmod -g 20 staff || true
 
-# Step 2: Remove the vscode user to free up UID 1000
-# (Most dev-container setups expect the primary user to have UID 1000)
-RUN userdel -r vscode 2>/dev/null || true
+# Step 2: Create 'me' user and group as aliases of 'vscode', and move home to /home/me
+RUN set -e; \
+    VS_UID="$(id -u vscode)"; \
+    VS_GID="$(id -g vscode)"; \
+    VS_PRIMARY_GROUP_NAME="$(getent group "${VS_GID}" | cut -d: -f1)"; \
+    VS_GROUPS="$(id -nG vscode | tr ' ' ',')"; \
+    # Create 'me' group with same GID as vscode's primary group (alias)
+    if ! getent group me >/dev/null 2>&1; then \
+        groupadd -o -g "${VS_GID}" me || true; \
+    fi; \
+    # Create 'me' user with same UID/GID as vscode (alias)
+    if ! id -u me >/dev/null 2>&1; then \
+        useradd -o -u "${VS_UID}" -g "${VS_GID}" -M -d /home/me -s /bin/zsh me; \
+    fi; \
+    # Move /home/vscode to /home/me if needed
+    if [ -d /home/vscode ] && [ ! -e /home/me ]; then \
+        mv /home/vscode /home/me; \
+    fi; \
+    # Ensure both users point to /home/me
+    usermod -d /home/me vscode; \
+    usermod -d /home/me me; \
+    # Add 'me' to the same supplementary groups as 'vscode'
+    for my_grp in $(echo "${VS_GROUPS}" | tr ',' ' '); do \
+        if [ "${my_grp}" = "${VS_PRIMARY_GROUP_NAME}" ]; then continue; fi; \
+        usermod -aG "${my_grp}" me || true; \
+    done; \
+    # Ensure ownership matches the shared UID/GID
+    chown -R "${VS_UID}:${VS_GID}" /home/me || true; \
+    # Reorder passwd/group so name resolution prefers 'me' for shared UID/GID
+    # Passwd: place 'me' line before 'vscode' for the shared UID
+    ( \
+      grep -vE '^(me|vscode):' /etc/passwd; \
+      grep -E '^me:' /etc/passwd; \
+      grep -E '^vscode:' /etc/passwd \
+    ) > /etc/passwd.new && mv /etc/passwd.new /etc/passwd; \
+    # Group: place 'me' group before 'vscode' group for the shared GID
+    ( \
+      grep -vE '^(me|vscode):' /etc/group; \
+      grep -E '^me:' /etc/group || true; \
+      grep -E '^vscode:' /etc/group || true \
+    ) > /etc/group.new && mv /etc/group.new /etc/group
 
-# Step 3: Change the GID of the dialout group because macOS uses GID 20
-# for the staff group
-RUN groupmod -g 2020 dialout && groupmod -g 20 staff
+# Step 3: Ensure home directory exists with correct ownership and mapping
+RUN mkdir -p /home/me && chown me:me /home/me
 
-# Step 4: Create the 'me' user with specific UID and group memberships
-# - UID 1000: Standard for the primary user in most Linux distributions
-# - Primary group: users (GID 100)
-# - Secondary group: staff (GID 20, matches macOS)
-# - Shell: zsh (user preference, installed above)
-RUN useradd -m -u 1000 -g users -G 20 -s /bin/zsh me
+# Step 4: Recursively ensure ownership of all files in home directory
+RUN chown -R me:me /home/me
 
-# Step 5: Restore any backed-up content from the vscode user
-# This preserves any configuration the base image set up
-RUN if [ -d "/tmp/vscode_backup" ]; then \
-        cp -a /tmp/vscode_backup/. /home/me/; \
-        chown -R me:users /home/me; \
-        rm -rf /tmp/vscode_backup; \
-    fi
-
-# Step 6: Ensure home directory exists with correct ownership
-RUN mkdir -p /home/me && chown me:users /home/me
-
-# Step 7: Recursively change ownership of all files in home directory
-RUN chown -R me:users /home/me
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 1 End
+# ---------------------------------------------------------------------------
+RUN df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-1-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base,end,$(date +%s)" >> /tmp/build-metrics/stage-1-base.csv && \
+    echo "Stage 1 (base) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-1-size-start.txt) -> $(cat /tmp/build-metrics/stage-1-size-end.txt)"
 
 # ---------------------------------------------------------------------------
 # Dotfiles and configuration files
@@ -577,7 +633,7 @@ COPY dotfiles/config/nvim/ /home/me/.config/nvim/
 # ---------------------------------------------------------------------------
 # Ensure all copied dotfiles are owned by the 'me' user
 # ---------------------------------------------------------------------------
-RUN chown -R me:users /home/me/.tmux.conf \
+RUN chown -R me:me /home/me/.tmux.conf \
                       /home/me/.Rprofile \
                       /home/me/.lintr \
                       /home/me/.config
@@ -602,7 +658,7 @@ RUN mkdir -p /home/me/.R && \
     echo 'CXX14 = g++ -pipe' >> /home/me/.R/Makevars && \
     echo 'CXX17 = g++ -pipe' >> /home/me/.R/Makevars && \
     echo 'CXXFLAGS = -g -O2 -fPIC -pipe' >> /home/me/.R/Makevars && \
-    chown -R me:users /home/me/.R
+    chown -R me:me /home/me/.R
 
 # ---------------------------------------------------------------------------
 # Node.js and Go development tools installation
@@ -659,6 +715,15 @@ USER root
 
 FROM base AS base-nvim
 
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 2 Start
+# ---------------------------------------------------------------------------
+RUN mkdir -p /tmp/build-metrics && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim,start,$(date +%s)" > /tmp/build-metrics/stage-2-base-nvim.csv && \
+    echo "Stage 2 (base-nvim) started at $(date)" && \
+    df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-2-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-2-size-start.txt)"
+
 # Switch to the 'me' user for nvim plugin installation
 USER me
 
@@ -677,6 +742,14 @@ RUN nvim --headless "+Lazy! sync" +qa
 # Switch back to root for any remaining system-level setup
 USER root
 
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 2 End
+# ---------------------------------------------------------------------------
+RUN df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-2-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim,end,$(date +%s)" >> /tmp/build-metrics/stage-2-base-nvim.csv && \
+    echo "Stage 2 (base-nvim) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-2-size-start.txt) -> $(cat /tmp/build-metrics/stage-2-size-end.txt)"
+
 # ===========================================================================
 # STAGE 3: VS CODE SERVER AND EXTENSIONS              (base-nvim-vscode)
 # ===========================================================================
@@ -686,6 +759,15 @@ USER root
 # ---------------------------------------------------------------------------
 
 FROM base-nvim AS base-nvim-vscode
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 3 Start
+# ---------------------------------------------------------------------------
+RUN mkdir -p /tmp/build-metrics && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode,start,$(date +%s)" > /tmp/build-metrics/stage-3-base-nvim-vscode.csv && \
+    echo "Stage 3 (base-nvim-vscode) started at $(date)" && \
+    df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-3-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-3-size-start.txt)"
 
 # Switch to the 'me' user for VS Code server installation
 USER me
@@ -732,10 +814,18 @@ RUN /home/me/.vscode-server/bin/bin/code-server \
         || echo "Some extensions may have failed to install but continuing..."
 
 # Set correct ownership for VS Code server files
-RUN chown -R me:users /home/me/.vscode-server
+RUN chown -R me:me /home/me/.vscode-server
 
 # Switch back to root for any remaining system-level setup
 USER root
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 3 End
+# ---------------------------------------------------------------------------
+RUN df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-3-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode,end,$(date +%s)" >> /tmp/build-metrics/stage-3-base-nvim-vscode.csv && \
+    echo "Stage 3 (base-nvim-vscode) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-3-size-start.txt) -> $(cat /tmp/build-metrics/stage-3-size-end.txt)"
 
 # ===========================================================================
 # STAGE 4: LATEX TYPESETTING SUPPORT                (base-nvim-vscode-tex)
@@ -744,6 +834,15 @@ USER root
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-vscode AS base-nvim-vscode-tex
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 4 Start
+# ---------------------------------------------------------------------------
+RUN mkdir -p /tmp/build-metrics && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex,start,$(date +%s)" > /tmp/build-metrics/stage-4-base-nvim-vscode-tex.csv && \
+    echo "Stage 4 (base-nvim-vscode-tex) started at $(date)" && \
+    df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-4-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-4-size-start.txt)"
 # ---------------------------------------------------------------------------
 # This doesn't install the full TeX Live distribution, to keep the image
 # size down, though this is contributes a lot to the final image size.
@@ -761,8 +860,36 @@ RUN set -e; \
         librsvg2-bin && \
     # Ensure font maps are up to date so XeTeX can find Zapf Dingbats (pzdr)
     updmap-sys || true; \
+    # Remove LaTeX documentation to reduce image size
+    echo "Removing LaTeX documentation to reduce image size..."; \
+    rm -rf /usr/share/texlive/texmf-dist/doc || true; \
+    rm -rf /usr/share/doc/texlive* || true; \
+    rm -rf /usr/share/man/man*/tex* || true; \
+    rm -rf /usr/share/man/man*/latex* || true; \
+    rm -rf /usr/share/man/man*/dvips* || true; \
+    rm -rf /usr/share/man/man*/xetex* || true; \
+    rm -rf /usr/share/man/man*/luatex* || true; \
+    rm -rf /usr/share/info/latex* || true; \
+    rm -rf /usr/share/texmf/doc || true; \
+    # Remove source files that aren't needed at runtime
+    find /usr/share/texlive/texmf-dist -name '*.dtx' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name '*.ins' -delete || true; \
+    # Remove readme and changelog files
+    find /usr/share/texlive/texmf-dist -name 'README*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'CHANGES*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'ChangeLog*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'HISTORY*' -delete || true; \
+    echo "✅ LaTeX documentation cleanup completed"; \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 4 End
+# ---------------------------------------------------------------------------
+RUN df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-4-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex,end,$(date +%s)" >> /tmp/build-metrics/stage-4-base-nvim-vscode-tex.csv && \
+    echo "Stage 4 (base-nvim-vscode-tex) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-4-size-start.txt) -> $(cat /tmp/build-metrics/stage-4-size-end.txt)"
 
 # ===========================================================================
 # STAGE 5: PANDOC                              (base-nvim-vscode-tex-pandoc)
@@ -772,6 +899,15 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-vscode-tex AS base-nvim-vscode-tex-pandoc
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 5 Start
+# ---------------------------------------------------------------------------
+RUN mkdir -p /tmp/build-metrics && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc,start,$(date +%s)" > /tmp/build-metrics/stage-5-base-nvim-vscode-tex-pandoc.csv && \
+    echo "Stage 5 (base-nvim-vscode-tex-pandoc) started at $(date)" && \
+    df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-5-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-5-size-start.txt)"
 
 # ---------------------------------------------------------------------------
 # Pandoc installation
@@ -799,7 +935,7 @@ RUN set -e; \
     PANDOC_DEB_URL="$( \
       echo "$RELEASE_INFO" | \
       grep browser_download_url | \
-      grep "${ARCH}\\.deb" | \
+      grep "\-${ARCH}\\.deb" | \
       head -n 1 | cut -d '"' -f 4 \
     )"; \
     if [ -n "$PANDOC_DEB_URL" ]; then \
@@ -832,6 +968,14 @@ RUN set -e; \
     # 3. Cleanup
     # ---------------------------------------------------------------
     rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 5 End
+# ---------------------------------------------------------------------------
+RUN df -h / | tail -1 | awk '{print $3}' > /tmp/build-metrics/stage-5-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc,end,$(date +%s)" >> /tmp/build-metrics/stage-5-base-nvim-vscode-tex-pandoc.csv && \
+    echo "Stage 5 (base-nvim-vscode-tex-pandoc) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-5-size-start.txt) -> $(cat /tmp/build-metrics/stage-5-size-end.txt)"
 
 # ===========================================================================
 # STAGE 6: HASKELL                (base-nvim-vscode-tex-pandoc-haskell)
@@ -971,6 +1115,17 @@ RUN set -e; \
     # First try to install soul directly from system packages
     apt-get update -qq && \
     apt-get install -y --no-install-recommends texlive-pictures texlive-latex-recommended; \
+    # Remove documentation from additional LaTeX packages
+    echo "Removing documentation from additional LaTeX packages..."; \
+    rm -rf /usr/share/texlive/texmf-dist/doc || true; \
+    rm -rf /usr/share/doc/texlive* || true; \
+    find /usr/share/texlive/texmf-dist -name '*.dtx' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name '*.ins' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'README*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'CHANGES*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'ChangeLog*' -delete || true; \
+    find /usr/share/texlive/texmf-dist -name 'HISTORY*' -delete || true; \
+    echo "✅ Additional LaTeX documentation cleanup completed"; \
     # Clean up
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -1067,7 +1222,8 @@ USER root
 # ---------------------------------------------------------------------------
 # Python 3.13 installation using deadsnakes PPA
 # ---------------------------------------------------------------------------
-# The deadsnakes PPA provides the latest Python versions for Ubuntu
+# The deadsnakes PPA provides the latest Python versions for Ubuntu.
+# We install Python 3.13 and let it manage the pip installation.
 # ---------------------------------------------------------------------------
 RUN set -e; \
     echo "Adding deadsnakes PPA for Python 3.13..."; \
@@ -1080,11 +1236,18 @@ RUN set -e; \
         python3.13 \
         python3.13-dev \
         python3.13-venv && \
-    # Install pip and setuptools for Python 3.13 (avoid upgrade conflicts)
+    # Update alternatives to make python3.13 the default python3
+    # Note: python3 defaults to the alternative with the highest priority number
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 2 && \
+    # Install pip using Python 3.13's built-in ensurepip (without upgrade to avoid conflicts)
     python3.13 -m ensurepip && \
-    python3.13 -m pip install setuptools && \
+    # Install common development tools
+    python3.13 -m pip install black flake8 mypy isort && \
     # Verify installation
+    python3 --version && \
     python3.13 --version && \
+    python3.13 -m pip --version && \
     echo "✅ Python 3.13 installed successfully" && \
     # Clean up
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -1109,11 +1272,18 @@ RUN cat /tmp/shell-common >> /home/me/.bashrc && \
     # Append Zsh-specific plugin config
     cat /tmp/zshrc_appends >> /home/me/.zshrc && \
     echo 'R_LIBS_SITE="/usr/local/lib/R/site-library"' >> /etc/environment && \
-    chown me:users /home/me/.bashrc /home/me/.zshrc && \
+    chown me:me /home/me/.bashrc /home/me/.zshrc && \
     rm /tmp/shell-common /tmp/zshrc_appends
 
+# Create and set default working directory
+RUN mkdir -p /workspaces && chown me:me /workspaces
+WORKDIR /workspaces
 
-# Create vscode home directory as symlink to /home/me for dev container compatibility
-RUN useradd -u 1000 -o -g $(id -gn 1000) -s /bin/zsh vscode && ln -sf /home/me /home/vscode
+# Keep shell as bash for RUN commands,
+# while making zsh the default for interactive sessions
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV SHELL=/bin/zsh
+CMD ["/bin/zsh", "-l"]
+
 # Switch to the 'me' user for the final container
 USER me

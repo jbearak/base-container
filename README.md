@@ -76,7 +76,7 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
   // For Colima on macOS, use vz for correct UID/GID mapping:
   // colima stop; colima delete; colima start --vm-type vz --mount-type virtiofs
 
-  // Use non-root user "me". Set to "root" if needed.
+  // Use non-root user "me" (alias of 'vscode' with same UID/GID). Set to "root" if needed.
   "remoteUser": "me",
   "updateRemoteUserUID": true,
 
@@ -121,12 +121,19 @@ Build a custom image that extends the base container with Q CLI pre-installed:
    WORKDIR /home/me
 
    # Install Amazon Q CLI during image build
-   RUN curl --proto '=https' --tlsv1.2 -sSf \
-      'https://desktop-release.q.us-east-1.amazonaws.com/latest/q-aarch64-linux.zip' \
-      -o 'q.zip' && \
-      unzip q.zip && \
-      chmod +x ./q/install.sh && \
-      ./q/install.sh --no-confirm && \
+   RUN set -e; \
+      ARCH="$(uname -m)"; \
+      case "$ARCH" in \
+        x86_64) Q_ARCH="x86_64" ;; \
+        aarch64|arm64) Q_ARCH="aarch64" ;; \
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;; \
+      esac; \
+      URL="https://desktop-release.q.us-east-1.amazonaws.com/latest/q-${Q_ARCH}-linux.zip"; \
+      echo "Downloading Amazon Q CLI from $URL"; \
+      curl --proto '=https' --tlsv1.2 -fsSL "$URL" -o q.zip; \
+      unzip q.zip; \
+      chmod +x ./q/install.sh; \
+      ./q/install.sh --no-confirm; \
       rm -rf q.zip q
 
    # Ensure Q CLI is in PATH for all users
@@ -181,11 +188,19 @@ If you prefer not to build a custom image, you can install Q CLI on container st
        "source=${localEnv:HOME}/.container-amazon-q,target=/home/me/.local/share/amazon-q,type=bind"
      ],
      "containerEnv": { "TZ": "${localEnv:TZ}" },
-     "postCreateCommand": "curl --proto '=https' --tlsv1.2 -sSf 'https://desktop-release.q.us-east-1.amazonaws.com/latest/q-aarch64-linux.zip' -o 'q.zip' && unzip q.zip && ./q/install.sh && rm -rf q.zip q"
+     "postCreateCommand": "ARCH=$(uname -m); case \"$ARCH\" in x86_64) QARCH=x86_64 ;; aarch64|arm64) QARCH=aarch64 ;; *) echo 'Unsupported arch'; exit 1 ;; esac; URL=\"https://desktop-release.q.us-east-1.amazonaws.com/latest/q-${QARCH}-linux.zip\"; curl --proto '=https' --tlsv1.2 -fsSL \"$URL\" -o 'q.zip' && unzip q.zip && ./q/install.sh --no-confirm && rm -rf q.zip q"
    }
    ```
 
 **Note:** Option 1 is recommended as it pre-installs Q CLI during image build, making container startup much faster. Option 2 reinstalls Q CLI every time the container starts.
+
+### User model
+
+As an aesthetic preference, the container contains a non-root user named "me". To retain this design choice while ensuring compatibility with VS Code, the following adjustments are made:
+
+- The image retains the default 'vscode' user required by Dev Containers/VS Code but also creates a 'me' user and 'me' group that share the same UID/GID as 'vscode'.
+- Both users have the same home directory: /home/me (the previous /home/vscode is renamed).
+- This design ensures compatibility with VS Code while making file listings show owner and group as 'me'.
 
 
 ## Research containers with tmux
