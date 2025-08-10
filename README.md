@@ -76,7 +76,7 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
   // For Colima on macOS, use vz for correct UID/GID mapping:
   // colima stop; colima delete; colima start --vm-type vz --mount-type virtiofs
 
-  // Use non-root user "me". Set to "root" if needed.
+  // Use non-root user "me" (alias of 'vscode' with same UID/GID). Set to "root" if needed.
   "remoteUser": "me",
   "updateRemoteUserUID": true,
 
@@ -186,6 +186,14 @@ If you prefer not to build a custom image, you can install Q CLI on container st
    ```
 
 **Note:** Option 1 is recommended as it pre-installs Q CLI during image build, making container startup much faster. Option 2 reinstalls Q CLI every time the container starts.
+
+### User model
+
+As an aesthetic preference, the container contains a non-root user named "me". To retain this design choice while ensuring compatibility with VS Code, the following adjustments are made:
+
+- The image retains the default 'vscode' user required by Dev Containers/VS Code but also creates a 'me' user and 'me' group that share the same UID/GID as 'vscode'.
+- Both users have the same home directory: /home/me (the previous /home/vscode is renamed).
+- This design ensures compatibility with VS Code while making file listings show owner and group as 'me'.
 
 
 ## Research containers with tmux

@@ -519,46 +519,69 @@ ENV LC_ALL=en_US.UTF-8
 # ---------------------------------------------------------------------------
 # User account management
 # ---------------------------------------------------------------------------
-# The mcr.microsoft.com/devcontainers/base image creates a default 'vscode'
-# user, but we want to use 'me'
+# Retain the default 'vscode' user from the devcontainers base image and create
+# a second login 'me' that is an alias (same UID/GID). This preserves
+# compatibility with VS Code / Dev Containers while letting us use 'me' as our
+# preferred login.
 #
-# This section handles the transition carefully
+# Best practice: Many devcontainer features, caches, and VS Code Server paths
+# assume a 'vscode' user. Retaining it avoids subtle permission/startup issues.
+# Creating 'me' with the exact same UID/GID (and a 'me' group with the same
+# GID as 'vscode') provides a seamless alias and ensures `ls -l` displays
+# owner and group as 'me'.
 # ---------------------------------------------------------------------------
 
-# Step 1: Backup existing vscode home directory if it exists
-# (The base image might have created files we want to preserve)
-RUN if [ -d "/home/vscode" ]; then \
-        cp -a /home/vscode /tmp/vscode_backup; \
-    fi
+# Step 1: Align groups commonly conflicting with macOS host
+RUN groupmod -g 2020 dialout || true; \
+    groupmod -g 20 staff || true
 
-# Step 2: Remove the vscode user to free up UID 1000
-# (Most dev-container setups expect the primary user to have UID 1000)
-RUN userdel -r vscode 2>/dev/null || true
+# Step 2: Create 'me' user and group as aliases of 'vscode', and move home to /home/me
+RUN set -e; \
+    VS_UID="$(id -u vscode)"; \
+    VS_GID="$(id -g vscode)"; \
+    VS_PRIMARY_GROUP_NAME="$(getent group "${VS_GID}" | cut -d: -f1)"; \
+    VS_GROUPS="$(id -nG vscode | tr ' ' ',')"; \
+    # Create 'me' group with same GID as vscode's primary group (alias)
+    if ! getent group me >/dev/null 2>&1; then \
+        groupadd -o -g "${VS_GID}" me || true; \
+    fi; \
+    # Create 'me' user with same UID/GID as vscode (alias)
+    if ! id -u me >/dev/null 2>&1; then \
+        useradd -o -u "${VS_UID}" -g "${VS_GID}" -M -d /home/me -s /bin/zsh me; \
+    fi; \
+    # Move /home/vscode to /home/me if needed
+    if [ -d /home/vscode ] && [ ! -e /home/me ]; then \
+        mv /home/vscode /home/me; \
+    fi; \
+    # Ensure both users point to /home/me
+    usermod -d /home/me vscode; \
+    usermod -d /home/me me; \
+    # Add 'me' to the same supplementary groups as 'vscode'
+    for my_grp in $(echo "${VS_GROUPS}" | tr ',' ' '); do \
+        [ "${my_grp}" = "${VS_PRIMARY_GROUP_NAME}" ] && continue; \
+        usermod -aG "${my_grp}" me || true; \
+    done; \
+    # Ensure ownership matches the shared UID/GID
+    chown -R "${VS_UID}:${VS_GID}" /home/me || true; \
+    # Reorder passwd/group so name resolution prefers 'me' for shared UID/GID
+    # Passwd: place 'me' line before 'vscode' for the shared UID
+    ( \
+      grep -vE '^(me|vscode):' /etc/passwd; \
+      grep -E '^me:' /etc/passwd; \
+      grep -E '^vscode:' /etc/passwd \
+    ) > /etc/passwd.new && mv /etc/passwd.new /etc/passwd; \
+    # Group: place 'me' group before 'vscode' group for the shared GID
+    ( \
+      grep -vE '^(me|vscode):' /etc/group; \
+      grep -E '^me:' /etc/group || true; \
+      grep -E '^vscode:' /etc/group || true \
+    ) > /etc/group.new && mv /etc/group.new /etc/group
 
-# Step 3: Change the GID of the dialout group because macOS uses GID 20
-# for the staff group
-RUN groupmod -g 2020 dialout && groupmod -g 20 staff
+# Step 3: Ensure home directory exists with correct ownership and mapping
+RUN mkdir -p /home/me && chown me:me /home/me
 
-# Step 4: Create the 'me' user with specific UID and group memberships
-# - UID 1000: Standard for the primary user in most Linux distributions
-# - Primary group: users (GID 100)
-# - Secondary group: staff (GID 20, matches macOS)
-# - Shell: zsh (user preference, installed above)
-RUN useradd -m -u 1000 -g users -G 20 -s /bin/zsh me
-
-# Step 5: Restore any backed-up content from the vscode user
-# This preserves any configuration the base image set up
-RUN if [ -d "/tmp/vscode_backup" ]; then \
-        cp -a /tmp/vscode_backup/. /home/me/; \
-        chown -R me:users /home/me; \
-        rm -rf /tmp/vscode_backup; \
-    fi
-
-# Step 6: Ensure home directory exists with correct ownership
-RUN mkdir -p /home/me && chown me:users /home/me
-
-# Step 7: Recursively change ownership of all files in home directory
-RUN chown -R me:users /home/me
+# Step 4: Recursively ensure ownership of all files in home directory
+RUN chown -R me:me /home/me
 
 # ---------------------------------------------------------------------------
 # Dotfiles and configuration files
@@ -577,7 +600,7 @@ COPY dotfiles/config/nvim/ /home/me/.config/nvim/
 # ---------------------------------------------------------------------------
 # Ensure all copied dotfiles are owned by the 'me' user
 # ---------------------------------------------------------------------------
-RUN chown -R me:users /home/me/.tmux.conf \
+RUN chown -R me:me /home/me/.tmux.conf \
                       /home/me/.Rprofile \
                       /home/me/.lintr \
                       /home/me/.config
@@ -602,7 +625,7 @@ RUN mkdir -p /home/me/.R && \
     echo 'CXX14 = g++ -pipe' >> /home/me/.R/Makevars && \
     echo 'CXX17 = g++ -pipe' >> /home/me/.R/Makevars && \
     echo 'CXXFLAGS = -g -O2 -fPIC -pipe' >> /home/me/.R/Makevars && \
-    chown -R me:users /home/me/.R
+    chown -R me:me /home/me/.R
 
 # ---------------------------------------------------------------------------
 # Node.js and Go development tools installation
@@ -732,7 +755,7 @@ RUN /home/me/.vscode-server/bin/bin/code-server \
         || echo "Some extensions may have failed to install but continuing..."
 
 # Set correct ownership for VS Code server files
-RUN chown -R me:users /home/me/.vscode-server
+RUN chown -R me:me /home/me/.vscode-server
 
 # Switch back to root for any remaining system-level setup
 USER root
@@ -1109,11 +1132,11 @@ RUN cat /tmp/shell-common >> /home/me/.bashrc && \
     # Append Zsh-specific plugin config
     cat /tmp/zshrc_appends >> /home/me/.zshrc && \
     echo 'R_LIBS_SITE="/usr/local/lib/R/site-library"' >> /etc/environment && \
-    chown me:users /home/me/.bashrc /home/me/.zshrc && \
+    chown me:me /home/me/.bashrc /home/me/.zshrc && \
     rm /tmp/shell-common /tmp/zshrc_appends
 
 # Create and set default working directory
-RUN mkdir -p /workspace && chown me:users /workspace
+RUN mkdir -p /workspace && chown me:me /workspace
 WORKDIR /workspace
 
 # Keep shell as bash for RUN commands,
