@@ -823,14 +823,15 @@ RUN set -e; \
       head -n 1 | cut -d '"' -f 4 \
     )"; \
     if [ -n "$PANDOC_DEB_URL" ]; then \
+      PANDOC_DEB_BASE="$(basename "$PANDOC_DEB_URL")"; \
       echo "Downloading Pandoc .deb from: ${PANDOC_DEB_URL}"; \
-      curl -L "$PANDOC_DEB_URL" -o /tmp/pandoc.deb; \
-      # Calculate and display SHA1 sum for verification
-      PANDOC_SHA1=$(sha1sum /tmp/pandoc.deb | cut -d' ' -f1); \
-      echo "Pandoc .deb SHA1 sum: ${PANDOC_SHA1}"; \
-      echo "✅ Pandoc ${PANDOC_VERSION} .deb downloaded and verified"; \
-      apt-get install -y /tmp/pandoc.deb; \
-      rm /tmp/pandoc.deb; \
+      curl -fsSL "$PANDOC_DEB_URL" -o "/tmp/${PANDOC_DEB_BASE}"; \
+      PANDOC_SHA256_URL="https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/SHA256SUMS"; \
+      curl -fsSL "$PANDOC_SHA256_URL" -o /tmp/PANDOC_SHA256SUMS; \
+      (cd /tmp && sha256sum -c <(grep " ${PANDOC_DEB_BASE}$" /tmp/PANDOC_SHA256SUMS)); \
+      echo "✅ Pandoc ${PANDOC_VERSION} .deb SHA256 verified"; \
+      apt-get install -y "/tmp/${PANDOC_DEB_BASE}"; \
+      rm "/tmp/${PANDOC_DEB_BASE}" /tmp/PANDOC_SHA256SUMS; \
     else \
       echo "No .deb asset found for ${ARCH}. Falling back to tarball."; \
       PANDOC_TAR_URL="$( \
