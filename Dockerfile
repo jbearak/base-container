@@ -15,7 +15,7 @@
 #             Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus): Add extra LaTeX packages via tlmgr (e.g. soul)
 #             Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r): Install a comprehensive suite of R packages.
 #             Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py): Add Python 3.13 using deadsnakes PPA.
-#             Stage 11 (full)              : Final stage; currently empty but ready for additional setup.
+#             Stage 11 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
 #
 # Why multi-stage?
 #   • Allows for quick debugging of specific components without rebuilding everything
@@ -367,18 +367,15 @@ RUN set -e; \
     NVIM_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing Neovim ${NVIM_VERSION} for ${NVIM_ARCH}"; \
     # Construct URL for tarball using GitHub Releases API data
-    NVIM_URL="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-${NVIM_ARCH}.tar.gz"; \
+    NVIM_BASENAME="nvim-linux-${NVIM_ARCH}.tar.gz"; \
+    NVIM_URL="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/${NVIM_BASENAME}"; \
     echo "Downloading Neovim from ${NVIM_URL}"; \
-    # Download the tarball
-    curl -fsSL "${NVIM_URL}" -o /tmp/nvim.tar.gz; \
-    # Generate and display SHA1 sum for verification/transparency
-    echo "Generating SHA1 sum for verification:"; \
-    NVIM_SHA1=$(sha1sum /tmp/nvim.tar.gz | cut -d' ' -f1); \
-    echo "SHA1: ${NVIM_SHA1}"; \
-    echo "✅ Neovim ${NVIM_VERSION} downloaded successfully"; \
-    # Extract and install
-    tar -xzf /tmp/nvim.tar.gz -C /usr/local --strip-components=1; \
-    rm /tmp/nvim.tar.gz; \
+    curl -fsSL "${NVIM_URL}" -o "/tmp/${NVIM_BASENAME}"; \
+    curl -fsSL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/${NVIM_BASENAME}.sha256sum" -o "/tmp/${NVIM_BASENAME}.sha256sum"; \
+    (cd /tmp && sha256sum -c "/tmp/${NVIM_BASENAME}.sha256sum"); \
+    echo "✅ Neovim ${NVIM_VERSION} SHA256 verified"; \
+    tar -xzf "/tmp/${NVIM_BASENAME}" -C /usr/local --strip-components=1; \
+    rm "/tmp/${NVIM_BASENAME}" "/tmp/${NVIM_BASENAME}.sha256sum"; \
     # Verify installation
     nvim --version | head -n 1
 
@@ -842,14 +839,15 @@ RUN set -e; \
         grep "linux-${ARCH}\\.tar.gz" | \
         head -n 1 | cut -d '"' -f 4 \
       )"; \
+      PANDOC_TAR_BASE="$(basename "$PANDOC_TAR_URL")"; \
       echo "Downloading Pandoc tarball from: ${PANDOC_TAR_URL}"; \
-      curl -L "$PANDOC_TAR_URL" -o /tmp/pandoc.tar.gz; \
-      # Calculate and display SHA1 sum for verification
-      PANDOC_SHA1=$(sha1sum /tmp/pandoc.tar.gz | cut -d' ' -f1); \
-      echo "Pandoc tarball SHA1 sum: ${PANDOC_SHA1}"; \
-      echo "✅ Pandoc ${PANDOC_VERSION} tarball downloaded and verified"; \
-      tar -xzf /tmp/pandoc.tar.gz -C /usr/local --strip-components=1; \
-      rm /tmp/pandoc.tar.gz; \
+      curl -fsSL "$PANDOC_TAR_URL" -o "/tmp/${PANDOC_TAR_BASE}"; \
+      PANDOC_SHA256_URL="https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/SHA256SUMS"; \
+      curl -fsSL "$PANDOC_SHA256_URL" -o /tmp/PANDOC_SHA256SUMS; \
+      (cd /tmp && sha256sum -c <(grep " ${PANDOC_TAR_BASE}$" /tmp/PANDOC_SHA256SUMS)); \
+      echo "✅ Pandoc ${PANDOC_VERSION} tarball SHA256 verified"; \
+      tar -xzf "/tmp/${PANDOC_TAR_BASE}" -C /usr/local --strip-components=1; \
+      rm "/tmp/${PANDOC_TAR_BASE}" /tmp/PANDOC_SHA256SUMS; \
     fi; \
     # ---------------------------------------------------------------
     # 3. Cleanup
@@ -1106,6 +1104,8 @@ RUN set -e; \
     # Install pip and setuptools for Python 3.13 (avoid upgrade conflicts)
     python3.13 -m ensurepip && \
     python3.13 -m pip install setuptools && \
+    python3.13 -m pip install --upgrade pip && \
+    python3.13 -m pip install black flake8 mypy isort && \
     # Verify installation
     python3.13 --version && \
     echo "✅ Python 3.13 installed successfully" && \
@@ -1137,7 +1137,7 @@ RUN cat /tmp/shell-common >> /home/me/.bashrc && \
 
 # Create and set default working directory
 RUN mkdir -p /workspace && chown me:me /workspace
-WORKDIR /workspace
+WORKDIR /workspaces
 
 # Keep shell as bash for RUN commands,
 # while making zsh the default for interactive sessions

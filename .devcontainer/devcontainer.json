@@ -8,6 +8,8 @@
   // Use non-root user "me" (alias of 'vscode' with same UID/GID). Set to "root" if needed.
   "remoteUser": "me",
   "updateRemoteUserUID": true,
+  "init": true,
+  "shutdownAction": "none",
 
   // Mount local Git config for container Git usage
   "mounts": [

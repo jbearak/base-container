@@ -6,12 +6,19 @@ USER me
 WORKDIR /home/me
 
 # Install Amazon Q CLI during image build
-RUN curl --proto '=https' --tlsv1.2 -sSf \
-    'https://desktop-release.q.us-east-1.amazonaws.com/latest/q-aarch64-linux.zip' \
-    -o 'q.zip' && \
-    unzip q.zip && \
-    chmod +x ./q/install.sh && \
-    ./q/install.sh --no-confirm && \
+RUN set -e; \
+    ARCH="$(uname -m)"; \
+    case "$ARCH" in \
+      x86_64) Q_ARCH="x86_64" ;; \
+      aarch64|arm64) Q_ARCH="aarch64" ;; \
+      *) echo "Unsupported arch: $ARCH"; exit 1 ;; \
+    esac; \
+    URL="https://desktop-release.q.us-east-1.amazonaws.com/latest/q-${Q_ARCH}-linux.zip"; \
+    echo "Downloading Amazon Q CLI from $URL"; \
+    curl --proto '=https' --tlsv1.2 -fsSL "$URL" -o q.zip; \
+    unzip q.zip; \
+    chmod +x ./q/install.sh; \
+    ./q/install.sh --no-confirm; \
     rm -rf q.zip q
 
 # Ensure Q CLI is in PATH for all users

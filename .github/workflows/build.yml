@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [base, base-nvim, base-nvim-vscode, base-nvim-vscode-tex, base-nvim-vscode-tex-pandoc, base-nvim-vscode-tex-pandoc-plus, full]
+        target: [base, base-nvim, base-nvim-vscode, base-nvim-vscode-tex, base-nvim-vscode-tex-pandoc, base-nvim-vscode-tex-pandoc-haskell, base-nvim-vscode-tex-pandoc-haskell-crossref, base-nvim-vscode-tex-pandoc-haskell-crossref-plus, full]
         platform: [linux/amd64, linux/arm64]
     
     permissions:
@@ -89,8 +89,14 @@ jobs:
           "base-nvim-vscode-tex")
             docker run --rm base-container:${{ matrix.target }} bash -c "xelatex --version | head -n 1"
             ;;
-          "base-nvim-vscode-tex-pandoc"|"base-nvim-vscode-tex-pandoc-plus")
+          "base-nvim-vscode-tex-pandoc"|"base-nvim-vscode-tex-pandoc-haskell"|"base-nvim-vscode-tex-pandoc-haskell-crossref"|"base-nvim-vscode-tex-pandoc-haskell-crossref-plus")
             docker run --rm base-container:${{ matrix.target }} bash -c "pandoc --version | head -n 1"
+            if [ "${{ matrix.target }}" = "base-nvim-vscode-tex-pandoc-haskell" ]; then
+              docker run --rm base-container:${{ matrix.target }} bash -c "stack --version"
+            fi
+            if [ "${{ matrix.target }}" = "base-nvim-vscode-tex-pandoc-haskell-crossref" ]; then
+              docker run --rm base-container:${{ matrix.target }} bash -c "pandoc-crossref --version"
+            fi
             ;;
           "full")
             docker run --rm base-container:${{ matrix.target }} bash -c 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'
@@ -124,3 +130,23 @@ jobs:
           --amend
         
         docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Hadolint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+      - name: Install shellcheck and shfmt
+        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck shfmt
+      - name: Shellcheck scripts
+        run: |
+          set -e
+          find . -maxdepth 2 -type f -name "*.sh" -print0 | xargs -0 -r shellcheck -x
+      - name: shfmt check
+        run: |
+          set -e
+          shfmt -d .
