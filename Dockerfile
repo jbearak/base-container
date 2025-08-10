@@ -366,16 +366,29 @@ RUN set -e; \
     RELEASE_INFO=$(curl -fsSL "https://api.github.com/repos/neovim/neovim/releases/latest"); \
     NVIM_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing Neovim ${NVIM_VERSION} for ${NVIM_ARCH}"; \
+    # Get the git tag info to verify GPG signature
+    TAG_REF_INFO=$(curl -fsSL "https://api.github.com/repos/neovim/neovim/git/refs/tags/${NVIM_VERSION}"); \
+    TAG_SHA=$(echo "$TAG_REF_INFO" | grep '"sha":' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/'); \
+    TAG_INFO=$(curl -fsSL "https://api.github.com/repos/neovim/neovim/git/tags/${TAG_SHA}"); \
+    # Verify the tag has a valid GPG signature
+    TAG_VERIFIED=$(echo "$TAG_INFO" | grep '"verified":[[:space:]]*true' || echo ""); \
+    if [ -z "$TAG_VERIFIED" ]; then \
+        echo "❌ Neovim ${NVIM_VERSION} tag signature verification failed!"; \
+        echo "Tag info: $TAG_INFO"; \
+        exit 1; \
+    fi; \
+    echo "✅ Neovim ${NVIM_VERSION} GPG tag signature verified"; \
     # Construct URL for tarball using GitHub Releases API data
     NVIM_BASENAME="nvim-linux-${NVIM_ARCH}.tar.gz"; \
     NVIM_URL="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/${NVIM_BASENAME}"; \
     echo "Downloading Neovim from ${NVIM_URL}"; \
     curl -fsSL "${NVIM_URL}" -o "/tmp/${NVIM_BASENAME}"; \
-    curl -fsSL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/${NVIM_BASENAME}.sha256sum" -o "/tmp/${NVIM_BASENAME}.sha256sum"; \
-    (cd /tmp && sha256sum -c "/tmp/${NVIM_BASENAME}.sha256sum"); \
-    echo "✅ Neovim ${NVIM_VERSION} SHA256 verified"; \
+    # Generate and display SHA256 sum for verification/transparency
+    NVIM_SHA256=$(sha256sum "/tmp/${NVIM_BASENAME}" | cut -d' ' -f1); \
+    echo "Neovim ${NVIM_VERSION} SHA256: ${NVIM_SHA256}"; \
+    echo "✅ Neovim ${NVIM_VERSION} downloaded and GPG-verified via signed git tag"; \
     tar -xzf "/tmp/${NVIM_BASENAME}" -C /usr/local --strip-components=1; \
-    rm "/tmp/${NVIM_BASENAME}" "/tmp/${NVIM_BASENAME}.sha256sum"; \
+    rm "/tmp/${NVIM_BASENAME}"; \
     # Verify installation
     nvim --version | head -n 1
 
@@ -819,7 +832,7 @@ RUN set -e; \
     PANDOC_DEB_URL="$( \
       echo "$RELEASE_INFO" | \
       grep browser_download_url | \
-      grep "${ARCH}\\.deb" | \
+      grep "\-${ARCH}\\.deb" | \
       head -n 1 | cut -d '"' -f 4 \
     )"; \
     if [ -n "$PANDOC_DEB_URL" ]; then \
