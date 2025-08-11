@@ -6,10 +6,11 @@
 # This script parses build metrics CSV files generated during Docker build
 # and produces a comprehensive timing and size summary table.
 #
-# Usage: ./generate_build_metrics_summary.sh [container_id_or_name]
+# Usage:
+#   ./generate_build_metrics_summary.sh [--metadata build/build_metadata.json] [image_or_container]
 #
-# If no container ID/name is provided, it will attempt to extract metrics
-# from the most recently built base-container image.
+# If no argument is provided, it will attempt to use the most recent
+# base-container image.
 # ===========================================================================
 
 set -euo pipefail
@@ -38,9 +39,27 @@ print_header() {
     print_color "$BOLD$CYAN" "=========================================="
 }
 
+# Bytes to human readable
+format_size() {
+    local bytes="$1"
+    awk -v b="$bytes" '
+      function human(x){
+        split("B K M G T P", u, " ")
+        i=1
+        while (x>=1024 && i<6){ x/=1024; i++ }
+        if (x>=100) printf("%.0f%s\n", x, u[i]);
+        else if (x>=10) printf("%.1f%s\n", x, u[i]);
+        else printf("%.2f%s\n", x, u[i]);
+      } BEGIN { human(b) }'
+}
+
 # Function to format duration in human-readable format
 format_duration() {
     local seconds="$1"
+    if [ -z "$seconds" ] || ! [[ "$seconds" =~ ^[0-9]+$ ]]; then
+        echo "-"
+        return
+    fi
     if [ "$seconds" -lt 60 ]; then
         echo "${seconds}s"
     elif [ "$seconds" -lt 3600 ]; then
@@ -55,35 +74,31 @@ format_duration() {
     fi
 }
 
-# Function to extract metrics from a container
-extract_metrics() {
-    local container="$1"
+# Extract metrics from a container ID; caller ensures a container exists
+extract_metrics_from_container() {
+    local container_id="$1"
     local temp_dir
     temp_dir=$(mktemp -d)
-    
-    print_color "$BLUE" "Extracting build metrics from container: $container"
-    
-    # Copy all metrics files from the container
-    docker cp "$container:/tmp/build-metrics" "$temp_dir/" 2>/dev/null || {
-        print_color "$RED" "❌ Failed to extract build metrics from container '$container'"
-        print_color "$YELLOW" "   Make sure the container was built with the metrics-enabled Dockerfile"
-        rm -rf "$temp_dir"
-        return 1
-    }
-    
-    local metrics_dir="$temp_dir/build-metrics"
-    
-    if [ ! -d "$metrics_dir" ]; then
-        print_color "$RED" "❌ No build metrics found in container '$container'"
+
+    print_color "$BLUE" "Extracting build metrics from container: $container_id"
+
+    if ! docker cp "$container_id:/tmp/build-metrics" "$temp_dir/" >/dev/null 2>&1; then
+        print_color "$YELLOW" "No /tmp/build-metrics found in container."
         rm -rf "$temp_dir"
         return 1
     fi
-    
+
+    local metrics_dir="$temp_dir/build-metrics"
+    if [ ! -d "$metrics_dir" ]; then
+        print_color "$YELLOW" "No metrics directory extracted."
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
     print_header "BUILD METRICS SUMMARY"
-    
+
     # Initialize totals
     local total_build_time=0
-    local cumulative_time=0
     
     # Stage information arrays
     declare -a stage_names=()
@@ -91,190 +106,227 @@ extract_metrics() {
     declare -a stage_sizes_start=()
     declare -a stage_sizes_end=()
     declare -a stage_size_changes=()
-    
-    # Process each stage in order
-    for stage_num in {1..11}; do
-        local csv_file
-        case $stage_num in
-            1) csv_file="stage-1-base.csv" ;;
-            2) csv_file="stage-2-base-nvim.csv" ;;
-            3) csv_file="stage-3-base-nvim-vscode.csv" ;;
-            4) csv_file="stage-4-base-nvim-vscode-tex.csv" ;;
-            5) csv_file="stage-5-base-nvim-vscode-tex-pandoc.csv" ;;
-            6) csv_file="stage-6-base-nvim-vscode-tex-pandoc-haskell.csv" ;;
-            7) csv_file="stage-7-base-nvim-vscode-tex-pandoc-haskell-crossref.csv" ;;
-            8) csv_file="stage-8-base-nvim-vscode-tex-pandoc-haskell-crossref-plus.csv" ;;
-            9) csv_file="stage-9-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r.csv" ;;
-            10) csv_file="stage-10-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py.csv" ;;
-            11) csv_file="stage-11-full.csv" ;;
-        esac
-        
-        local csv_path="$metrics_dir/$csv_file"
-        if [ ! -f "$csv_path" ]; then
+
+    # Discover stages by CSV files and sort numerically by stage number
+    IFS=$'\n'
+    for csv_path in $(find "$metrics_dir" -maxdepth 1 -type f -name 'stage-*-*.csv' \
+                      | sed -E 's#.*/stage-([0-9]+)-.*#\1 & #' \
+                      | sort -n \
+                      | awk '{print $2}'); do
+        local base
+        base="$(basename "$csv_path")" # stage-N-name.csv
+        local stage_num
+        stage_num="$(echo "$base" | sed -E 's/^stage-([0-9]+)-.*/\1/')"
+        local stage_name
+        stage_name="$(echo "$base" | sed -E 's/^stage-[0-9]+-(.*)\.csv/\1/')"
+
+        local start_time end_time
+        start_time=$(grep ',start,' "$csv_path" | awk -F',' 'END{print $NF}')
+        end_time=$(grep ',end,' "$csv_path" | awk -F',' 'END{print $NF}')
+        if [ -z "$start_time" ] || [ -z "$end_time" ]; then
             continue
         fi
-        
-        # Parse CSV file
-        local start_time end_time stage_name
-        local start_line end_line
-        
-        start_line=$(grep ",start," "$csv_path" 2>/dev/null || echo "")
-        end_line=$(grep ",end," "$csv_path" 2>/dev/null || echo "")
-        
-        if [ -z "$start_line" ] || [ -z "$end_line" ]; then
-            continue
+        local duration=$(( end_time - start_time ))
+        total_build_time=$(( total_build_time + duration ))
+
+        local start_file end_file start_bytes end_bytes change_bytes
+        start_file="$metrics_dir/stage-${stage_num}-size-start.txt"
+        end_file="$metrics_dir/stage-${stage_num}-size-end.txt"
+        if [ -s "$start_file" ]; then start_bytes="$(tr -dc '0-9' < "$start_file")"; else start_bytes=""; fi
+        if [ -s "$end_file" ]; then end_bytes="$(tr -dc '0-9' < "$end_file")"; else end_bytes=""; fi
+        if [ -n "$start_bytes" ] && [ -n "$end_bytes" ]; then
+            change_bytes=$(( end_bytes - start_bytes ))
+        else
+            change_bytes=""
         fi
-        
-        start_time=$(echo "$start_line" | cut -d',' -f4)
-        end_time=$(echo "$end_line" | cut -d',' -f4)
-        stage_name=$(echo "$start_line" | cut -d',' -f2)
-        
-        if [ -n "$start_time" ] && [ -n "$end_time" ]; then
-            local duration=$((end_time - start_time))
-            total_build_time=$((total_build_time + duration))
-            cumulative_time=$((cumulative_time + duration))
-            
-            # Get size information
-            local size_start_file="stage-${stage_num}-size-start.txt"
-            local size_end_file="stage-${stage_num}-size-end.txt"
-            local size_start="N/A"
-            local size_end="N/A"
-            local size_change="N/A"
-            
-            if [ -f "$metrics_dir/$size_start_file" ] && [ -f "$metrics_dir/$size_end_file" ]; then
-                size_start=$(cat "$metrics_dir/$size_start_file" 2>/dev/null || echo "N/A")
-                size_end=$(cat "$metrics_dir/$size_end_file" 2>/dev/null || echo "N/A")
-                
-                if [ "$size_start" != "N/A" ] && [ "$size_end" != "N/A" ]; then
-                    # Calculate size change (rough approximation)
-                    size_change="+$(echo "$size_end" | sed 's/[^0-9.]//g')-$(echo "$size_start" | sed 's/[^0-9.]//g')" 2>/dev/null || size_change="N/A"
-                fi
-            fi
-            
-            # Store stage information
-            stage_names+=("$stage_name")
-            stage_durations+=("$duration")
-            stage_sizes_start+=("$size_start")
-            stage_sizes_end+=("$size_end")
-            stage_size_changes+=("$size_change")
-        fi
+
+        stage_names+=("$stage_name")
+        stage_durations+=("$duration")
+        stage_sizes_start+=("${start_bytes:-}")
+        stage_sizes_end+=("${end_bytes:-}")
+        stage_size_changes+=("${change_bytes:-}")
     done
-    
-    # Print summary table
+    unset IFS
+
     echo
     print_color "$BOLD" "Per-Stage Build Summary"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    printf "%-6s %-35s %-12s %-12s %-12s %-12s %-15s\\n" \
+    printf "%-6s %-35s %-12s %-12s %-12s %-12s %-15s\n" \
            "Stage" "Name" "Duration" "Cumulative" "Start Size" "End Size" "Size Change"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
+
     local cumulative_duration=0
+    local slowest_stage=""
+    local slowest_seconds=0
+
     for i in "${!stage_names[@]}"; do
         local stage_num=$((i + 1))
-        local stage_name="${stage_names[$i]}"
-        local duration="${stage_durations[$i]}"
-        local size_start="${stage_sizes_start[$i]}"
-        local size_end="${stage_sizes_end[$i]}"
-        local size_change="${stage_size_changes[$i]}"
-        
-        cumulative_duration=$((cumulative_duration + duration))
-        
-        local duration_formatted
-        local cumulative_formatted
-        duration_formatted=$(format_duration "$duration")
-        cumulative_formatted=$(format_duration "$cumulative_duration")
-        
-        # Color code slow stages
-        local color=""
-        if [ "$duration" -gt 1800 ]; then  # > 30 minutes
-            color="$RED"
-        elif [ "$duration" -gt 600 ]; then  # > 10 minutes
-            color="$YELLOW"
-        else
-            color="$GREEN"
-        fi
-        
-        # Left-truncate stage name if longer than 32 characters
-        local display_name="$stage_name"
-        if [ ${#stage_name} -gt 32 ]; then
-            display_name="...${stage_name: -29}"
-        fi
-        
-        printf "${color}%-6s${NC} %-35s ${color}%-12s${NC} %-12s %-12s %-12s %-15s\\n" \
-               "$stage_num" "$display_name" "$duration_formatted" "$cumulative_formatted" \
-               "$size_start" "$size_end" "$size_change"
+        local sname="${stage_names[$i]}"
+        local dur="${stage_durations[$i]}"
+        local sb="${stage_sizes_start[$i]}"
+        local eb="${stage_sizes_end[$i]}"
+        local cb="${stage_size_changes[$i]}"
+
+        cumulative_duration=$((cumulative_duration + dur))
+        [ "$dur" -gt "$slowest_seconds" ] && slowest_seconds="$dur" && slowest_stage="$sname"
+
+        local color
+        if [ "$dur" -gt 1800 ]; then color="$RED"; elif [ "$dur" -gt 600 ]; then color="$YELLOW"; else color="$GREEN"; fi
+
+        local display_name="$sname"
+        if [ ${#display_name} -gt 32 ]; then display_name="...${display_name: -29}"; fi
+
+        printf "${color}%-6s${NC} %-35s ${color}%-12s${NC} %-12s %-12s %-12s %-15s\n" \
+               "$stage_num" "$display_name" "$(format_duration "$dur")" "$(format_duration "$cumulative_duration")" \
+               "$( [ -n "$sb" ] && format_size "$sb" || echo - )" \
+               "$( [ -n "$eb" ] && format_size "$eb" || echo - )" \
+               "$( [ -n "$cb" ] && printf "+%s" "$(format_size "$cb")" || echo - )"
     done
-    
+
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
-    # Print totals
+
     echo
     print_color "$BOLD$GREEN" "Overall Build Statistics"
     print_color "$GREEN" "• Total Build Time: $(format_duration "$total_build_time")"
     print_color "$GREEN" "• Number of Stages: ${#stage_names[@]}"
-    print_color "$GREEN" "• Average Stage Time: $(format_duration $((total_build_time / ${#stage_names[@]})))"
-    
-    # Find slowest stage
-    local max_duration=0
-    local slowest_stage=""
-    for i in "${!stage_names[@]}"; do
-        local duration="${stage_durations[$i]}"
-        if [ "$duration" -gt "$max_duration" ]; then
-            max_duration="$duration"
-            slowest_stage="${stage_names[$i]}"
-        fi
-    done
-    
-    if [ "$max_duration" -gt 0 ]; then
-        print_color "$YELLOW" "• Slowest Stage: $slowest_stage ($(format_duration "$max_duration"))"
+    if [ ${#stage_names[@]} -gt 0 ]; then
+      print_color "$GREEN" "• Average Stage Time: $(format_duration $(( total_build_time / ${#stage_names[@]} )))"
     fi
-    
-    # Recommendations
+    if [ "$slowest_seconds" -gt 0 ]; then
+      print_color "$YELLOW" "• Slowest Stage: $slowest_stage ($(format_duration "$slowest_seconds"))"
+    fi
+
     echo
     print_color "$BOLD$CYAN" "Build Optimization Recommendations"
-    if [ "$max_duration" -gt 3600 ]; then
-        print_color "$RED" "⚠️  Very long build detected (>1 hour total)"
-        print_color "$YELLOW" "   Consider using Docker layer caching or multi-stage build optimizations"
-    elif [ "$max_duration" -gt 1800 ]; then
-        print_color "$YELLOW" "⚠️  Long build detected (>30 minutes for slowest stage)"
-        print_color "$YELLOW" "   Consider optimizing the '$slowest_stage' stage"
+    if [ "$slowest_seconds" -gt 3600 ]; then
+      print_color "$RED" "⚠️  Very long build detected (>1 hour stage)"
+    elif [ "$slowest_seconds" -gt 1800 ]; then
+      print_color "$YELLOW" "⚠️  Long build detected (>30 minutes for slowest stage)"
+      print_color "$YELLOW" "   Consider optimizing the '$slowest_stage' stage"
     else
-        print_color "$GREEN" "✅ Build time looks reasonable"
+      print_color "$GREEN" "✅ Build time looks reasonable"
     fi
-    
-    # Cleanup
+
     rm -rf "$temp_dir"
-    
+
     echo
     print_color "$BOLD$BLUE" "Build metrics analysis complete!"
 }
 
+print_image_sizes_and_history() {
+    local image_ref="$1"
+    local metadata_file="${2:-}"
+
+    print_header "IMAGE SIZE SUMMARY"
+
+    if [ -n "$metadata_file" ] && command -v jq >/dev/null 2>&1 && [ -s "$metadata_file" ]; then
+        local compressed_bytes
+        compressed_bytes=$(jq -r '."containerimage.descriptor".size // empty' "$metadata_file" || true)
+        if [ -n "$compressed_bytes" ] && [ "$compressed_bytes" != "null" ]; then
+            echo "Compressed (push) size: $(format_size "$compressed_bytes")"
+        else
+            echo "Compressed (push) size: unavailable (no descriptor in metadata)"
+        fi
+    else
+        echo "Compressed (push) size: (provide --metadata path to BuildKit metadata to show)"
+    fi
+
+    local uncompressed_bytes
+    uncompressed_bytes=$(docker image inspect "$image_ref" --format '{{.Size}}' 2>/dev/null || true)
+    if [ -n "$uncompressed_bytes" ]; then
+        echo "Uncompressed (local) size: $(format_size "$uncompressed_bytes")"
+    else
+        echo "Uncompressed (local) size: unavailable"
+    fi
+
+    if docker history --no-trunc "$image_ref" >/dev/null 2>&1; then
+        echo
+        print_color "$BOLD" "Layer history (most recent first)"
+        docker history --no-trunc "$image_ref" | sed -n '1,15p'
+    fi
+}
+
 # Main execution
 main() {
-    local container="${1:-}"
-    
-    # If no container specified, try to find the most recent base-container
-    if [ -z "$container" ]; then
-        print_color "$BLUE" "No container specified, looking for most recent base-container image..."
-        
-        # Try to get the most recent base-container image
-        container=$(docker images --format "table {{.Repository}}:{{.Tag}}\t{{.CreatedAt}}" | \
-                   grep "base-container" | \
-                   head -1 | \
-                   awk '{print $1}') || true
-        
-        if [ -z "$container" ]; then
+    local metadata_file=""
+    local arg=""
+
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --metadata)
+          metadata_file="$2"; shift 2 ;;
+        *)
+          arg="$1"; shift ;;
+      esac
+    done
+
+    local image_or_container="$arg"
+
+    if [ -z "$image_or_container" ]; then
+        print_color "$BLUE" "No image/container specified, selecting a 'base-container' image..."
+        # Collect candidate tags, excluding <none>
+        local candidates
+        candidates=($(docker images --format '{{.Repository}}:{{.Tag}}' \
+            | grep '^base-container:' \
+            | grep -v ':<none>$' || true))
+        if [ ${#candidates[@]} -eq 0 ]; then
             print_color "$RED" "❌ No base-container images found"
-            print_color "$YELLOW" "Usage: $0 [container_id_or_name]"
-            print_color "$YELLOW" "   or build a base-container image first"
+            print_color "$YELLOW" "Usage: $0 [--metadata file.json] [image_or_container]"
             exit 1
         fi
-        
-        print_color "$GREEN" "Found container: $container"
+        # Prefer explicit tags when available
+        for preferred in "base-container:full" "base-container:latest"; do
+            for c in "${candidates[@]}"; do
+                if [ "$c" = "$preferred" ]; then
+                    image_or_container="$c"
+                    break 2
+                fi
+            done
+        done
+        # Fallback to the first candidate
+        if [ -z "$image_or_container" ]; then
+            image_or_container="${candidates[0]}"
+        fi
+        print_color "$GREEN" "Using image: $image_or_container"
     fi
-    
+
+    # Determine if the argument is a container or an image
+    local container_id=""
+    if docker container inspect "$image_or_container" >/dev/null 2>&1; then
+        container_id="$image_or_container"
+    else
+        # Treat as image, create a temporary container
+        if ! docker image inspect "$image_or_container" >/dev/null 2>&1; then
+            print_color "$RED" "❌ Not a valid container or image: $image_or_container"
+            exit 1
+        fi
+        container_id=$(docker create "$image_or_container")
+    fi
+
+    # Ensure container gets removed after use if we created it
+    local created_temp=false
+    if ! docker ps -a --format '{{.ID}}' | grep -q "^${container_id}$"; then
+        # Unexpected, but continue without cleanup flag
+        created_temp=false
+    else
+        # We don't know if it pre-existed; best effort: mark as created if the name isn't in 'docker ps -a --format {{.Names}}'
+        created_temp=true
+    fi
+
+    # Print sizes/history based on the image reference (resolve from container if needed)
+    local image_ref
+    image_ref=$(docker inspect --format='{{.Image}}' "$container_id" 2>/dev/null || echo "")
+    # If that failed (rare), fall back to arg
+    [ -z "$image_ref" ] && image_ref="$image_or_container"
+
+    print_image_sizes_and_history "$image_ref" "$metadata_file"
+
     # Extract and display metrics
-    extract_metrics "$container"
+    extract_metrics_from_container "$container_id" || true
+
+    # Cleanup temporary container if we created one (best effort)
+    # We can't perfectly detect pre-existence without more bookkeeping; remove safely if it's not running
+    docker rm -v "$container_id" >/dev/null 2>&1 || true
 }
 
 # Run main function with all arguments
