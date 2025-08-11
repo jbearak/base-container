@@ -1,5 +1,11 @@
 #!/bin/bash
-# install_r_packages.sh - R package installer with failed package reporting
+# install_r_packages.sh - R package installer with pak support (Phase 1)
+# 
+# Phase 1 Implementation: Foundation setup with pak integration
+# - Installs CRAN packages using pak for better dependency resolution
+# - Maintains compatibility with existing special package handling
+# - Adds pak-based installation for GitHub packages
+# - Preserves current error reporting and debugging features
 
 # Configuration
 PACKAGES_FILE="/tmp/packages.txt"
@@ -39,7 +45,7 @@ if [[ $total_packages -eq 0 ]]; then
     exit 0
 fi
 
-echo "📦 Installing $total_packages R packages..."
+echo "📦 Installing $total_packages R packages using pak..."
 echo "🕒 Start time: $(date)"
 echo
 
@@ -47,8 +53,50 @@ start_time=$(date +%s)
 installed_count=0
 failed_packages=()
 
-# Function to install a single package
-install_package() {
+# Function to install packages using pak
+install_packages_with_pak() {
+    local packages_list="$1"
+    echo "📦 Installing CRAN packages with pak..."
+    
+    # Create R script for pak installation
+    local r_script="
+    library(pak)
+    
+    # Read packages from file
+    packages <- readLines('$PACKAGES_FILE')
+    packages <- packages[packages != '']  # Remove empty lines
+    
+    cat('Installing', length(packages), 'packages with pak...\\n')
+    
+    # Install packages with pak
+    tryCatch({
+        pak::pkg_install(packages)
+        cat('SUCCESS: All CRAN packages installed\\n')
+    }, error = function(e) {
+        cat('ERROR:', conditionMessage(e), '\\n')
+        quit(status = 1)
+    })
+    "
+    
+    if [[ "$DEBUG_MODE" == "true" ]]; then
+        echo "R script for pak installation:"
+        echo "$r_script"
+        echo "Executing pak installation..."
+    fi
+    
+    # Execute pak installation
+    if echo "$r_script" | R --slave --no-restore; then
+        echo "✅ CRAN packages installed successfully with pak"
+        installed_count=$((installed_count + total_packages))
+        return 0
+    else
+        echo "❌ pak installation failed, falling back to individual package installation"
+        return 1
+    fi
+}
+
+# Function to install a single package (fallback method)
+install_package_individual() {
     local package="$1"
     local r_command="if (require('$package', character.only=TRUE, quietly=TRUE)) { 
         cat('already installed\\n') 
@@ -85,20 +133,35 @@ install_package() {
     fi
 }
 
-# Install packages from the main list
-for package in "${packages[@]}"; do
-    # Skip empty lines or lines with only whitespace
-    [[ -z "${package// }" ]] && continue
-    install_package "$package"
-done
+# Try pak installation first, fall back to individual installation if needed
+if ! install_packages_with_pak; then
+    echo "Falling back to individual package installation..."
+    installed_count=0  # Reset counter for individual installation
+    
+    # Install packages individually
+    for package in "${packages[@]}"; do
+        # Skip empty lines or lines with only whitespace
+        [[ -z "${package// }" ]] && continue
+        install_package_individual "$package"
+    done
+fi
 
-# Install additional packages
+# Install additional packages using pak where possible
 echo
 echo "📦 Installing additional packages ..."
 
-# Install mcmcplots from CRAN archive
-echo -n "📦 Installing mcmcplots from CRAN archive... "
-mcmcplots_command="install.packages('https://cran.r-project.org/src/contrib/Archive/mcmcplots/mcmcplots_0.4.3.tar.gz', repos=NULL, type='source', dependencies=TRUE, quiet=TRUE)"
+# Install mcmcplots from CRAN archive using pak
+echo -n "📦 Installing mcmcplots from CRAN archive with pak... "
+mcmcplots_command="
+library(pak)
+tryCatch({
+    pak::pkg_install('https://cran.r-project.org/src/contrib/Archive/mcmcplots/mcmcplots_0.4.3.tar.gz')
+    cat('SUCCESS\\n')
+}, error = function(e) {
+    cat('ERROR:', conditionMessage(e), '\\n')
+    quit(status = 1)
+})
+"
 
 if [[ "$DEBUG_MODE" == "true" ]]; then
     if echo "$mcmcplots_command" | R --slave --no-restore; then
@@ -118,136 +181,64 @@ else
     fi
 fi
 
-# Install httpgd from GitHub
-echo -n "🌐 Installing httpgd from GitHub... "
+# Install httpgd from GitHub using pak
+echo -n "🌐 Installing httpgd from GitHub with pak... "
+httpgd_command="
+library(pak)
+tryCatch({
+    pak::pkg_install('nx10/httpgd')
+    cat('SUCCESS\\n')
+}, error = function(e) {
+    cat('ERROR:', conditionMessage(e), '\\n')
+    quit(status = 1)
+})
+"
 
-# Get latest release info from GitHub API
-HTTPGD_RELEASE_INFO=$(curl -s https://api.github.com/repos/nx10/httpgd/releases/latest)
-HTTPGD_VERSION=$(echo "$HTTPGD_RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-
-if [[ -z "$HTTPGD_VERSION" ]]; then
-    echo "❌ Failed to get httpgd release information"
-    failed_packages+=("httpgd")
-else
-    # Use GitHub's tarball URL (httpgd doesn't provide release assets)
-    HTTPGD_TARBALL_NAME="httpgd-${HTTPGD_VERSION}.tar.gz"
-    HTTPGD_URL="https://api.github.com/repos/nx10/httpgd/tarball/${HTTPGD_VERSION}"
-    
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo
-        echo "  Version: $HTTPGD_VERSION"
-        echo "  Tarball: $HTTPGD_TARBALL_NAME"
-        echo "  URL: $HTTPGD_URL"
-        echo -n "  Downloading... "
-    fi
-    
-    # Download the package
-    if curl -fsSL "$HTTPGD_URL" -o "/tmp/$HTTPGD_TARBALL_NAME"; then
-        # Calculate SHA256 checksum of downloaded file
-        DOWNLOADED_HTTPGD_SHA256=$(sha256sum "/tmp/$HTTPGD_TARBALL_NAME" | cut -d' ' -f1)
-        
-        if [[ "$DEBUG_MODE" == "true" ]]; then
-            echo "✅ Downloaded"
-            echo "  SHA256: $DOWNLOADED_HTTPGD_SHA256"
-            echo -n "  Installing R package... "
-        fi
-        
-        # Install the package from the downloaded tarball
-        httpgd_command="install.packages('/tmp/$HTTPGD_TARBALL_NAME', repos=NULL, type='source', dependencies=TRUE, quiet=TRUE)"
-        
-        if [[ "$DEBUG_MODE" == "true" ]]; then
-            if echo "$httpgd_command" | R --slave --no-restore; then
-                echo "✅"
-                ((installed_count++))
-            else
-                echo "❌"
-                failed_packages+=("httpgd")
-            fi
-        else
-            if echo "$httpgd_command" | R --slave --no-restore >/dev/null 2>&1; then
-                echo "✅"
-                ((installed_count++))
-            else
-                echo "❌"
-                failed_packages+=("httpgd")
-            fi
-        fi
-        
-        # Clean up downloaded file
-        rm -f "/tmp/$HTTPGD_TARBALL_NAME"
+if [[ "$DEBUG_MODE" == "true" ]]; then
+    if echo "$httpgd_command" | R --slave --no-restore; then
+        echo "✅"
+        ((installed_count++))
     else
-        echo "❌ Failed to download httpgd"
+        echo "❌"
+        failed_packages+=("httpgd")
+    fi
+else
+    if echo "$httpgd_command" | R --slave --no-restore >/dev/null 2>&1; then
+        echo "✅"
+        ((installed_count++))
+    else
+        echo "❌"
         failed_packages+=("httpgd")
     fi
 fi
 
-# Install colorout from GitHub
-echo -n "🎨 Installing colorout from GitHub... "
+# Install colorout from GitHub using pak
+echo -n "🎨 Installing colorout from GitHub with pak... "
+colorout_command="
+library(pak)
+tryCatch({
+    pak::pkg_install('jalvesaq/colorout')
+    cat('SUCCESS\\n')
+}, error = function(e) {
+    cat('ERROR:', conditionMessage(e), '\\n')
+    quit(status = 1)
+})
+"
 
-# Get latest release info from GitHub API
-RELEASE_INFO=$(curl -s https://api.github.com/repos/jalvesaq/colorout/releases/latest)
-COLOROUT_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-COLOROUT_ASSET_NAME=$(echo "$RELEASE_INFO" | grep '"name":.*\.tar\.gz"' | sed -E 's/.*"([^"]+)".*/\1/')
-COLOROUT_SHA256=$(echo "$RELEASE_INFO" | grep '"digest":.*sha256:' | sed -E 's/.*sha256:([a-f0-9]+)".*/\1/')
-
-if [[ -z "$COLOROUT_VERSION" || -z "$COLOROUT_ASSET_NAME" || -z "$COLOROUT_SHA256" ]]; then
-    echo "❌ Failed to get colorout release information"
-    failed_packages+=("colorout")
-else
-    # Construct download URL
-    COLOROUT_URL="https://github.com/jalvesaq/colorout/releases/download/${COLOROUT_VERSION}/${COLOROUT_ASSET_NAME}"
-    
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo
-        echo "  Version: $COLOROUT_VERSION"
-        echo "  Asset: $COLOROUT_ASSET_NAME"
-        echo "  SHA256: $COLOROUT_SHA256"
-        echo "  URL: $COLOROUT_URL"
-        echo -n "  Downloading and verifying... "
-    fi
-    
-    # Download the package
-    if curl -fsSL "$COLOROUT_URL" -o "/tmp/$COLOROUT_ASSET_NAME"; then
-        # Verify SHA256 checksum
-        DOWNLOADED_SHA256=$(sha256sum "/tmp/$COLOROUT_ASSET_NAME" | cut -d' ' -f1)
-        if [[ "$DOWNLOADED_SHA256" == "$COLOROUT_SHA256" ]]; then
-            if [[ "$DEBUG_MODE" == "true" ]]; then
-                echo "✅ SHA256 verified"
-                echo -n "  Installing R package... "
-            fi
-            
-            # Install the package from the downloaded tarball
-            colorout_command="install.packages('/tmp/$COLOROUT_ASSET_NAME', repos=NULL, type='source', dependencies=TRUE, quiet=TRUE)"
-            
-            if [[ "$DEBUG_MODE" == "true" ]]; then
-                if echo "$colorout_command" | R --slave --no-restore; then
-                    echo "✅"
-                    ((installed_count++))
-                else
-                    echo "❌"
-                    failed_packages+=("colorout")
-                fi
-            else
-                if echo "$colorout_command" | R --slave --no-restore >/dev/null 2>&1; then
-                    echo "✅"
-                    ((installed_count++))
-                else
-                    echo "❌"
-                    failed_packages+=("colorout")
-                fi
-            fi
-            
-            # Clean up downloaded file
-            rm -f "/tmp/$COLOROUT_ASSET_NAME"
-        else
-            echo "❌ SHA256 verification failed"
-            echo "  Expected: $COLOROUT_SHA256"
-            echo "  Got:      $DOWNLOADED_SHA256"
-            failed_packages+=("colorout")
-            rm -f "/tmp/$COLOROUT_ASSET_NAME"
-        fi
+if [[ "$DEBUG_MODE" == "true" ]]; then
+    if echo "$colorout_command" | R --slave --no-restore; then
+        echo "✅"
+        ((installed_count++))
     else
-        echo "❌ Failed to download colorout"
+        echo "❌"
+        failed_packages+=("colorout")
+    fi
+else
+    if echo "$colorout_command" | R --slave --no-restore >/dev/null 2>&1; then
+        echo "✅"
+        ((installed_count++))
+    else
+        echo "❌"
         failed_packages+=("colorout")
     fi
 fi
@@ -261,12 +252,13 @@ failed_count=${#failed_packages[@]}
 
 echo
 echo "=========================================="
-echo "📊 R PACKAGE INSTALLATION SUMMARY"
+echo "📊 R PACKAGE INSTALLATION SUMMARY (Phase 1)"
 echo "=========================================="
 echo "   ✅ Successfully installed: $installed_count packages"
 echo "   ❌ Failed installations: $failed_count packages"
 echo "   🕒 Total time: ${total_minutes}m ${total_seconds}s"
 echo "   📅 End time: $(date)"
+echo "   🔧 Method: pak with fallback to install.packages()"
 echo
 
 if [[ $failed_count -gt 0 ]]; then
