@@ -1382,14 +1382,10 @@ CMD ["/bin/zsh", "-l"]
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 11 End
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "Attempting to set ownership of /tmp/build-metrics..." && \
-    # Use find to modify permissions more flexibly
-    find /tmp/build-metrics -type d -exec chown me:me {} + || true && \
-    du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-end.txt \
-    && echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),full,end,$(date +%s)" >> /tmp/build-metrics/stage-11-full.csv \
-    && echo "Stage 11 (full) completed at $(date)" \
-    && echo "Size change: $(cat /tmp/build-metrics/stage-11-size-start.txt) -> $(cat /tmp/build-metrics/stage-11-size-end.txt)"
+RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),full,end,$(date +%s)" >> /tmp/build-metrics/stage-11-full.csv && \
+    echo "Stage 11 (full) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-11-size-start.txt) -> $(cat /tmp/build-metrics/stage-11-size-end.txt)"
 
 
 # ---------------------------------------------------------------------------
