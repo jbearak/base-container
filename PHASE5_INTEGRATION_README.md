@@ -144,7 +144,7 @@ pak::pkg_install("https://cran.r-project.org/src/contrib/Archive/mcmcplots/mcmcp
 ### Cache Management
 
 ```bash
-# Verify cache effectiveness
+# Check cache effectiveness
 ./cache-helper.sh inspect pak
 
 # Clean local cache
@@ -271,7 +271,7 @@ docker builder prune -f
 
 #### Memory Issues
 
-1. **Increase Docker Memory**: Allocate more memory to Docker
+1. **Increase Colima Memory**: Allocate more memory to Colima
 2. **Reduce Parallel Jobs**: Limit concurrent package builds
 3. **Monitor Resource Usage**: Use `docker stats` during builds
 
@@ -279,21 +279,21 @@ docker builder prune -f
 
 ### Planned Improvements
 
-1. **Package Pinning**: Support for `renv.lock` or similar
+1. **Package Pinning**: Support for `renv.lock` or similar for reproducible builds
 2. **CI Integration**: Automated builds on R_packages.txt changes
-3. **Advanced Caching**: More sophisticated cache invalidation
-4. **Security Scanning**: Automated vulnerability scanning
-5. **Performance Monitoring**: Continuous performance tracking
+3. **Advanced Caching**: More sophisticated cache invalidation strategies
+4. **Security Scanning**: Automated vulnerability scanning for packages
+5. **Performance Monitoring**: Continuous performance tracking and alerting
 
 ### Community Contributions
 
 Areas where community contributions would be valuable:
 
-1. **Additional Package Sources**: Support for more package repositories
-2. **Testing Frameworks**: Enhanced testing for specific use cases
-3. **Documentation**: User guides for specific workflows
-4. **Performance Optimization**: Advanced caching strategies
-5. **Security Enhancements**: Additional security measures
+1. **Package Repository Support**: Support for additional R package repositories beyond CRAN/GitHub
+2. **Testing Frameworks**: Enhanced testing for specific use cases and workflows
+3. **Documentation**: User guides for specific development workflows
+4. **Performance Optimization**: Advanced caching and build optimization strategies
+5. **Security Enhancements**: Additional security measures and best practices
 
 ## Success Metrics
 
