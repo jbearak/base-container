@@ -46,7 +46,7 @@ This implements Phase 1 of the R package installation transformation from instal
 ## Package Categories
 Based on the conversation summary, packages are categorized as:
 
-1. **CRAN Packages** (200+ packages in R_packages.txt): Installed via `pak::pkg_install(readLines("R_packages.txt"))`
+1. **CRAN Packages** (200+ in R_packages.txt): Installed via `pak::pkg_install(readLines("R_packages.txt"))`
 2. **Archive Package** (mcmcplots): Installed via `pak::pkg_install('https://cran.r-project.org/...')`
 3. **GitHub Packages**: 
    - httpgd: `pak::pkg_install('nx10/httpgd')`
