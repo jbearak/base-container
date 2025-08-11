@@ -1,10 +1,10 @@
 # Base Container
 
-A comprehensive, reproducible development environment using VS Code dev containers. Includes essential tools for data science, development, and document preparation with over 600 R packages.
+A comprehensive, reproducible development environment using VS Code dev containers. Includes essential tools for data science, development, and document preparation.
 
 ## Features
 - **Development Tools**: Git, R, Python, shell utilities
-- **R Packages**: 600+ packages for data analysis, modeling, and visualization
+- **R Packages**: Comprehensive set of packages for data analysis, modeling, and visualization
 - **Document Preparation**: LaTeX, Pandoc for typesetting
 - **Performance**: Fast rebuilds with BuildKit caching
 - **Multi-Architecture**: Supports both AMD64 and ARM64
@@ -270,7 +270,7 @@ The container uses a multi-stage build process with BuildKit caching for optimal
 - **Base Stage**: Ubuntu 24.04 with essential system packages
 - **Development Tools**: Neovim, VS Code Server, Git, shell utilities  
 - **Document Preparation**: LaTeX, Pandoc, Haskell (for pandoc-crossref)
-- **R Environment**: R 4.5+ with 600+ packages via pak
+- **R Environment**: R 4.5+ with comprehensive packages via pak
 - **Python Environment**: Python 3.12+ with data science packages
 
 ### R Package Management
@@ -281,24 +281,6 @@ The container uses [pak](https://pak.r-lib.org/) for R package management, provi
 - **Faster Installation**: Parallel downloads and compilation
 - **GitHub Integration**: Native support for GitHub packages
 - **Caching**: BuildKit cache mounts for faster rebuilds
-
-### Build Performance and Caching
-
-The container implements target-specific build caching for optimal performance, especially important for the pak-based R package system:
-
-#### Cache System
-- **BuildKit Cache Mounts**: Three cache mount points for maximum efficiency:
-  - `/root/.cache/R/pak` - pak metadata and dependency cache
-  - `/tmp/R-pkg-cache` - compiled package cache  
-  - `/tmp/downloaded_packages` - source package downloads
-- **Target-Specific Caching**: Each build stage maintains its own cache
-- **Registry Caching**: Supports pushing/pulling cache from container registries
-
-#### Performance Impact
-- **First build**: ~30-45 minutes for 600+ R packages
-- **Cached build**: ~5-10 minutes (80%+ time savings)
-- **Incremental changes**: Only affected packages rebuild
-- **Multi-Architecture**: Cache works across AMD64 and ARM64
 
 #### Cache Usage Examples
 ```bash
@@ -327,7 +309,7 @@ The container implements target-specific build caching for optimal performance, 
 - `base-nvim-vscode-tex-pandoc-haskell` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell
 - `base-nvim-vscode-tex-pandoc-haskell-crossref` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell + pandoc-crossref
 - `base-nvim-vscode-tex-pandoc-haskell-crossref-plus` - Base + additional tools
-- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r` - Base + R with 600+ packages via pak
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r` - Base + R with comprehensive packages via pak
 - `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py` - Base + R + Python
 - `full` - Complete development environment (default)
 
