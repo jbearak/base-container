@@ -17,3 +17,10 @@ regression_test_results/
 phase4_test_results/
 package_validation_results/
 build_performance_results/
+
+# Test result directories (added during cleanup)
+*_test_results/
+*_performance_results/
+*_validation_results/
+build/
+.tmp/
