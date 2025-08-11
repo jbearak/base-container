@@ -145,14 +145,14 @@ The container will automatically download and start your development environment
 ### Performance Monitoring
 
 ```bash
-# Verify cache management
-./verify_cache_management.sh
-
 # Run performance benchmarks
 ./test_build_performance.sh
 
 # Generate build metrics
 ./generate_build_metrics_summary.sh
+
+# Check cache usage
+docker system df
 ```
 
 ### Cache Management
@@ -346,7 +346,7 @@ If you use VS Code to create the container, add the following to your `.devconta
 ### Key Improvements
 
 | Aspect | Traditional | pak-based |
-|--------|-------------|-----------|
+|--------|-------------|-----------||
 | **Build Time** | 35-45 min | 15-25 min (with cache) |
 | **Package Management** | Multiple systems | Unified pak interface |
 | **Error Handling** | Manual intervention | Automatic retry |
@@ -372,8 +372,11 @@ docker --version && docker buildx version
 # pak system check
 docker run --rm ghcr.io/jbearak/base-container:latest R -e 'library(pak); pak::pak_config()'
 
-# Cache verification
-./verify_cache_management.sh
+# Check cache usage
+docker system df
+
+# Check pak cache (if container exists)
+docker run --rm base-container:pak R -e 'pak::cache_summary()' 2>/dev/null || echo "Container not built yet"
 ```
 
 ### Common Issues
