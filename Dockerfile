@@ -1309,6 +1309,8 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     --mount=type=cache,target=/tmp/downloaded_packages \
     chmod +x /tmp/install_r_packages.sh && \
     # Set up environment for R package installation
+    # NOTE: Environment setup is duplicated from pak installation RUN command above
+    # because Docker doesn't persist exported variables between separate RUN commands
     R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
     R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
     TARGETARCH=$(dpkg --print-architecture); \
