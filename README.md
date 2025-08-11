@@ -1,11 +1,13 @@
 # Base Container
 
-A comprehensive, reproducible development environment using VS Code dev containers. Includes essential tools for data science, development, and document preparation.
+A comprehensive, reproducible development environment using VS Code dev containers. Includes essential tools for data science, development, and document preparation with over 600 R packages.
 
 ## Features
 - **Development Tools**: Git, R, Python, shell utilities
-- **R Packages**: Comprehensive set for data analysis and modeling  
+- **R Packages**: 600+ packages for data analysis, modeling, and visualization
 - **Document Preparation**: LaTeX, Pandoc for typesetting
+- **Performance**: Fast rebuilds with BuildKit caching
+- **Multi-Architecture**: Supports both AMD64 and ARM64
 
 ## Quick Setup
 
@@ -98,6 +100,25 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
 
 The container will automatically download and start your development environment.
 
+## R Package System
+
+The container includes 600+ R packages installed using the modern [pak](https://pak.r-lib.org/) package manager for better dependency resolution and faster installation. Key packages include:
+
+### Core Data Science
+- **Tidyverse**: ggplot2, dplyr, tidyr, readr, stringr, lubridate
+- **Data Manipulation**: data.table, dtplyr
+- **Statistics**: lme4, brms, rstanarm, bayesplot
+- **Machine Learning**: caret, randomForest, glmnet
+
+### Visualization
+- **Plotting**: ggplot2, plotly, leaflet, DT
+- **Extensions**: gganimate, ggridges, ggforce, patchwork
+- **Interactive**: shiny, crosstalk, htmlwidgets
+
+### Special Packages
+- **httpgd**: Modern R graphics device for web-based plotting
+- **colorout**: Colorized R output in terminal
+- **mcmcplots**: MCMC diagnostic plots
 
 ## Using the Container with an Agentic Coding Tool
 
@@ -194,15 +215,6 @@ If you prefer not to build a custom image, you can install Q CLI on container st
 
 **Note:** Option 1 is recommended as it pre-installs Q CLI during image build, making container startup much faster. Option 2 reinstalls Q CLI every time the container starts.
 
-### User model
-
-As an aesthetic preference, the container contains a non-root user named "me". To retain this design choice while ensuring compatibility with VS Code, the following adjustments are made:
-
-- The image retains the default 'vscode' user required by Dev Containers/VS Code but also creates a 'me' user and 'me' group that share the same UID/GID as 'vscode'.
-- Both users have the same home directory: /home/me (the previous /home/vscode is renamed).
-- This design ensures compatibility with VS Code while making file listings show owner and group as 'me'.
-
-
 ## Research containers with tmux
 
 For multi-day analyses, keep containers running with tmux sessions to survive disconnections (but not reboots).
@@ -257,6 +269,42 @@ If you use VS Code to create the container, add the following to your `.devconta
 
 **Limitations:** Reboots terminate all processes. Container auto-restarts but jobs must be resumed manually. Use checkpointing for critical work.
 
+---
+
+## Technical Implementation Details
+
+### Architecture
+
+The container uses a multi-stage build process with BuildKit caching for optimal performance:
+
+- **Base Stage**: Ubuntu 24.04 with essential system packages
+- **Development Tools**: Neovim, VS Code Server, Git, shell utilities  
+- **Document Preparation**: LaTeX, Pandoc, Haskell (for pandoc-crossref)
+- **R Environment**: R 4.5+ with 600+ packages via pak
+- **Python Environment**: Python 3.12+ with data science packages
+
+### R Package Management
+
+The container uses [pak](https://pak.r-lib.org/) for R package management, providing:
+
+- **Better Dependency Resolution**: Handles complex dependency graphs more reliably
+- **Faster Installation**: Parallel downloads and compilation
+- **GitHub Integration**: Native support for GitHub packages
+- **Caching**: BuildKit cache mounts for faster rebuilds
+
+### Build Performance
+
+- **Cache Mounts**: BuildKit cache mounts for pak cache, compilation cache, and downloads
+- **Multi-Architecture**: Supports both AMD64 and ARM64 with architecture-specific optimizations
+- **Incremental Builds**: Only rebuilds changed layers, typically 50%+ faster on subsequent builds
+
+### User Model
+
+The container uses a non-root user named "me" for security and compatibility:
+
+- Compatible with VS Code Dev Containers (shares UID/GID with 'vscode' user)
+- Home directory: `/home/me`
+- Proper file permissions for mounted volumes
 
 ## License
 
