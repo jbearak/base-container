@@ -8,6 +8,8 @@ IMAGE_NAME="base-container"
 TAG_PREFIX="pak-phase2"
 DEBUG_PACKAGES=false
 BUILD_ARGS=""
+CACHE_MODE=""
+CACHE_REGISTRY=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -45,6 +47,7 @@ Options:
     -d, --debug             Enable debug mode for R package installation
     -t, --tag TAG           Custom tag suffix (default: pak-phase2)
     --no-cache              Disable BuildKit cache
+    --cache-from-to <registry>  Use and update registry cache
     --build-arg ARG=VALUE   Pass build argument to Docker
 
 Examples:
@@ -52,6 +55,7 @@ Examples:
     $0 --debug              # Build with debug output
     $0 --tag test           # Build with custom tag
     $0 --no-cache           # Build without cache
+    $0 --cache-from-to ghcr.io/jbearak/base-container  # Use registry cache
 
 Targets:
     pak-base                # pak-based R installation only
@@ -81,6 +85,12 @@ while [[ $# -gt 0 ]]; do
         --no-cache)
             USE_CACHE=false
             shift
+            ;;
+        --cache-from-to)
+            CACHE_REGISTRY="$2"
+            CACHE_MODE="--cache-from type=registry,ref=${CACHE_REGISTRY}/cache:pak-full --cache-to type=registry,ref=${CACHE_REGISTRY}/cache:pak-full,mode=max"
+            print_status "🔄 Using and updating registry cache: ${CACHE_REGISTRY}/cache:pak-full"
+            shift 2
             ;;
         --build-arg)
             BUILD_ARGS="$BUILD_ARGS --build-arg $2"
@@ -133,6 +143,10 @@ build_container() {
     
     if [[ "$USE_CACHE" == "true" ]]; then
         build_cmd="$build_cmd buildx build"
+        # Add cache options if specified
+        if [[ -n "$CACHE_MODE" ]]; then
+            build_cmd="$build_cmd $CACHE_MODE"
+        fi
     else
         build_cmd="$build_cmd build --no-cache"
     fi
