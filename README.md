@@ -282,11 +282,54 @@ The container uses [pak](https://pak.r-lib.org/) for R package management, provi
 - **GitHub Integration**: Native support for GitHub packages
 - **Caching**: BuildKit cache mounts for faster rebuilds
 
-### Build Performance
+### Build Performance and Caching
 
-- **Cache Mounts**: BuildKit cache mounts for pak cache, compilation cache, and downloads
-- **Multi-Architecture**: Supports both AMD64 and ARM64 with architecture-specific optimizations
-- **Incremental Builds**: Only rebuilds changed layers, typically 50%+ faster on subsequent builds
+The container implements target-specific build caching for optimal performance, especially important for the pak-based R package system:
+
+#### Cache System
+- **BuildKit Cache Mounts**: Three cache mount points for maximum efficiency:
+  - `/root/.cache/R/pak` - pak metadata and dependency cache
+  - `/tmp/R-pkg-cache` - compiled package cache  
+  - `/tmp/downloaded_packages` - source package downloads
+- **Target-Specific Caching**: Each build stage maintains its own cache
+- **Registry Caching**: Supports pushing/pulling cache from container registries
+
+#### Performance Impact
+- **First build**: ~30-45 minutes for 600+ R packages
+- **Cached build**: ~5-10 minutes (80%+ time savings)
+- **Incremental changes**: Only affected packages rebuild
+- **Multi-Architecture**: Cache works across AMD64 and ARM64
+
+#### Cache Usage Examples
+```bash
+# Build with local cache only (default)
+./build-container.sh --full
+
+# Build using registry cache
+./build-container.sh --full --cache-from ghcr.io/jbearak/base-container
+
+# Build and update registry cache
+./build-container.sh --full --cache-from-to ghcr.io/jbearak/base-container
+
+# Build without cache (clean build)
+./build-container.sh --full --no-cache
+
+# Clean local cache
+./cache-helper.sh clean
+```
+
+#### Available Build Targets
+- `base` - Ubuntu base with system packages
+- `base-nvim` - Base + Neovim
+- `base-nvim-vscode` - Base + Neovim + VS Code Server
+- `base-nvim-vscode-tex` - Base + Neovim + VS Code + LaTeX
+- `base-nvim-vscode-tex-pandoc` - Base + Neovim + VS Code + LaTeX + Pandoc
+- `base-nvim-vscode-tex-pandoc-haskell` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell
+- `base-nvim-vscode-tex-pandoc-haskell-crossref` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell + pandoc-crossref
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus` - Base + additional tools
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r` - Base + R with 600+ packages via pak
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py` - Base + R + Python
+- `full` - Complete development environment (default)
 
 ### User Model
 
