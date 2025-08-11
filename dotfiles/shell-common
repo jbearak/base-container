@@ -48,3 +48,47 @@ alias gcl='git clone --recurse-submodules -j8'
 # Neovim aliases
 alias vim='nvim'
 alias vi='nvim'
+
+# Functions
+# Smart tmux session management
+# - Attaches to existing session in current directory if found
+# - Creates new session with abbreviated path name if none exists
+# - Path abbreviation: parent dirs use fish-style (consonants only), working dir keeps full name
+# Usage: t (no arguments needed)
+t() {
+  local current_dir="$PWD"
+  local full_path="${PWD##/Users/$USER/}"
+  local session_name=""
+  
+  # Check for existing sessions in this directory
+  local existing_session=$(tmux list-sessions -F "#{session_name} #{session_path}" 2>/dev/null | grep " ${current_dir}$" | head -1 | cut -d' ' -f1)
+  
+  if [[ -n "$existing_session" ]]; then
+    # Attach to existing session
+    tmux attach -t "$existing_session"
+    return
+  fi
+  
+  # Create abbreviated session name
+  if [[ "$full_path" == */* ]]; then
+    # Split path into directories
+    local path_parts=(${(s:/:)full_path})
+    local last_dir="${path_parts[-1]}"
+    
+    # Abbreviate all directories except the last one
+    for ((i=1; i<${#path_parts[@]}; i++)); do
+      local dir="${path_parts[i]}"
+      # Fish-style abbreviation: first letter + consonants, drop vowels
+      local abbrev=$(echo "$dir" | sed 's/\(.\).*/\1/' | tr '[:upper:]' '[:lower:]')$(echo "$dir" | sed 's/^.//' | sed 's/[aeiouAEIOU]//g' | tr '[:upper:]' '[:lower:]')
+      session_name+="$abbrev/"
+    done
+    session_name+="$last_dir"
+  else
+    session_name="$full_path"
+  fi
+  
+  # Sanitize session name: keep only alphanumeric, periods, underscores, dashes, and forward slashes
+  session_name=$(echo "$session_name" | sed 's/[^a-zA-Z0-9._/-]//g')
+  
+  tmux new -ADs "$session_name"
+}
