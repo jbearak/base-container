@@ -150,13 +150,18 @@ fi
 echo
 echo "📦 Installing additional packages ..."
 
-# Install mcmcplots from CRAN archive using pak
-echo -n "📦 Installing mcmcplots from CRAN archive with pak... "
+# Install mcmcplots from CRAN archive using install.packages() (pak fails with this package)
+echo -n "📦 Installing mcmcplots from CRAN archive with install.packages()... "
 mcmcplots_command="
-library(pak)
 tryCatch({
-    pak::pkg_install('https://cran.r-project.org/src/contrib/Archive/mcmcplots/mcmcplots_0.4.3.tar.gz')
-    cat('SUCCESS\\n')
+    install.packages('https://cran.r-project.org/src/contrib/Archive/mcmcplots/mcmcplots_0.4.3.tar.gz', 
+                     repos = NULL, type = 'source', dependencies = TRUE, quiet = TRUE)
+    if (require('mcmcplots', character.only = TRUE, quietly = TRUE)) {
+        cat('SUCCESS\\n')
+    } else {
+        cat('FAILED TO LOAD\\n')
+        quit(status = 1)
+    }
 }, error = function(e) {
     cat('ERROR:', conditionMessage(e), '\\n')
     quit(status = 1)
