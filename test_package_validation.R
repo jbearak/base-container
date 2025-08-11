@@ -14,11 +14,16 @@ suppressPackageStartupMessages({
 
 # Configuration
 args <- commandArgs(trailingOnly = TRUE)
-PACKAGES_FILE <- if (length(args) > 0) args[1] else "R_packages.txt"
-RESULTS_DIR <- if (length(args) > 1) args[2] else "package_validation_results"
+
+# Parse flags first
 VERBOSE <- "--verbose" %in% args
 QUICK_MODE <- "--quick" %in% args
 DEEP_VALIDATION <- "--deep" %in% args && !QUICK_MODE
+
+# Remove flags from args to get positional arguments
+positional_args <- args[!grepl("^--", args)]
+PACKAGES_FILE <- if (length(positional_args) > 0) positional_args[1] else "R_packages.txt"
+RESULTS_DIR <- if (length(positional_args) > 1) positional_args[2] else "package_validation_results"
 
 # Create results directory
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
@@ -385,7 +390,7 @@ test_version_compatibility <- function() {
         pkg_info <- installed[i, ]
         if (!is.na(pkg_info$Built)) {
             built_year <- as.numeric(substr(pkg_info$Built, 1, 4))
-            if (current_year - built_year > 3) {
+            if (!is.na(built_year) && current_year - built_year > 3) {
                 old_packages <- c(old_packages, pkg_info$Package)
             }
         }

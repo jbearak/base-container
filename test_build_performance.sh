@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 # test_build_performance.sh - Build Performance Testing
 # Phase 4 implementation for pak migration (Issue #2)
 #
@@ -54,11 +54,12 @@ log_header() {
 
 # Initialize test environment
 init_performance_testing() {
+    # Create directories first before any logging
+    mkdir -p "$SESSION_DIR"/{logs,metrics,reports}
+    
     log_header "🚀 Build Performance Testing - Phase 4"
     log_info "Session: $TIMESTAMP"
     log_info "Results directory: $SESSION_DIR"
-    
-    mkdir -p "$SESSION_DIR"/{logs,metrics,reports}
     
     # Check prerequisites
     if ! command -v docker >/dev/null 2>&1; then

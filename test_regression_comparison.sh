@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 # test_regression_comparison.sh - Regression Testing Framework
 # Phase 4 implementation for pak migration (Issue #2)
 #
@@ -55,13 +55,14 @@ log_header() {
 
 # Initialize regression testing environment
 init_regression_testing() {
+    # Create directories first before any logging
+    mkdir -p "$SESSION_DIR"/{logs,metrics,reports,environments}
+    
     log_header "🔄 Phase 4: Regression Testing Framework"
     log_info "Session: $TIMESTAMP"
     log_info "Results directory: $SESSION_DIR"
     log_info "Sample size: $SAMPLE_SIZE"
     log_info "Full comparison: $ENABLE_FULL_COMPARISON"
-    
-    mkdir -p "$SESSION_DIR"/{logs,metrics,reports,environments}
     
     # Create isolated R environments for testing
     mkdir -p "$SESSION_DIR/environments"/{traditional,pak}
@@ -90,7 +91,7 @@ create_test_package_list() {
     # Write test packages to file
     printf '%s\n' "${all_packages[@]}" > "$test_packages_file"
     
-    log_info "Created test package list with ${#all_packages[@]} packages"
+    log_info "Created test package list with ${#all_packages[@]} packages" >&2
     echo "$test_packages_file"
 }
 
@@ -209,7 +210,7 @@ successful_installs <- 0
 failed_installs <- 0
 
 # Configure pak to use the specific library
-pak::pkg_install_plan(packages, lib = "$lib_dir")
+# pak::pkg_install_plan(packages, lib = "$lib_dir")  # This function doesn't exist
 
 for (pkg in packages) {
     cat("Installing:", pkg, "\n")

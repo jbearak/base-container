@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 # run_phase4_tests.sh - Master Test Runner for Phase 4
 # Phase 4 implementation for pak migration (Issue #2)
 #
@@ -54,13 +54,14 @@ log_header() {
 
 # Initialize master test environment
 init_master_testing() {
+    # Create directories first before any logging
+    mkdir -p "$SESSION_DIR"/{logs,reports,summaries}
+    
     log_header "🧪 Phase 4: Master Test Runner"
     log_info "Session: $TIMESTAMP"
     log_info "Test level: $TEST_LEVEL"
     log_info "Parallel execution: $PARALLEL_EXECUTION"
     log_info "Results directory: $SESSION_DIR"
-    
-    mkdir -p "$SESSION_DIR"/{logs,reports,summaries}
     
     # Check prerequisites
     local missing_tools=()

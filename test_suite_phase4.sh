@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 # test_suite_phase4.sh - Comprehensive Testing and Validation Framework
 # Phase 4 implementation for pak migration (Issue #2)
 #
@@ -70,12 +70,12 @@ declare -A TEST_DETAILS
 
 # Initialize test environment
 init_test_environment() {
+    # Create test directories first before any logging
+    mkdir -p "$TEST_SESSION_DIR"/{logs,reports,artifacts,benchmarks}
+    
     log_header "🧪 Phase 4: Comprehensive Testing and Validation Framework"
     log_info "Test session: $TIMESTAMP"
     log_info "Results directory: $TEST_SESSION_DIR"
-    
-    # Create test directories
-    mkdir -p "$TEST_SESSION_DIR"/{logs,reports,artifacts,benchmarks}
     
     # System information
     log_info "Collecting system information..."
@@ -230,7 +230,7 @@ test_special_packages() {
     
     # Test archive package (simulate with a CRAN package)
     cat('Installing archive-style package\n')
-    pak::pkg_install('colorout', ask = FALSE)
+    pak::pkg_install('jalvesaq/colorout', ask = FALSE)
     
     # Verify installations
     installed <- rownames(installed.packages())
