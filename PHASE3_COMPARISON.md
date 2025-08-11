@@ -61,17 +61,22 @@ pak::pkg_install("https://cran.r-project.org/src/contrib/Archive/mcmcplots/mcmcp
 - **Original**: 60+ lines including SHA256 verification from GitHub releases API
 - **pak**: Single line `pak::pkg_install("jalvesaq/colorout")`
 
-### Performance Improvements
+### Performance Considerations
 
-#### Batch Installation
-- **Original**: Sequential individual package installation
-- **pak**: Batch installation with dependency optimization
-- **Expected improvement**: 30-50% faster for CRAN packages
+#### Compilation Reality
+- **Package compilation** (not downloading) is the primary time bottleneck
+- pak does **not parallelize compilation** - packages still compile sequentially
+- **Similar overall installation time** expected compared to original approach
 
-#### Caching
-- **Original**: No built-in caching
-- **pak**: Automatic package caching and reuse
-- **BuildKit integration**: Ready for `--mount=type=cache,target=/root/.cache/R/pak`
+#### Where pak Helps
+- **Better dependency resolution**: May reduce total packages that need compilation
+- **Improved download coordination**: Minimal impact since downloads are fast
+- **Enhanced error recovery**: Less time spent on retry logic
+
+#### Future Performance Benefits
+- **BuildKit cache integration**: Major performance gains in Phase 5 via `--mount=type=cache,target=/root/.cache/R/pak`
+- **Package reuse**: Compiled packages cached across builds
+- **Dependency optimization**: pak's solver may identify unnecessary installations
 
 ### Error Handling & Reporting
 
@@ -123,10 +128,10 @@ The `test_pak_installation.sh` script provides:
 - **Simplified codebase**: 33% reduction in lines of code
 - **Enhanced reliability**: pak's mature error handling
 - **Better GitHub integration**: Native support eliminates manual API handling
-- **Improved performance**: Batch installation and caching
+- **Improved dependency resolution**: pak's advanced solver
 
 ### Future Benefits
-- **BuildKit cache integration**: Ready for Phase 5 implementation
+- **BuildKit cache integration**: Major performance gains in Phase 5
 - **Multi-architecture support**: pak handles architecture-specific packages better
 - **Dependency optimization**: pak's advanced dependency resolution
 - **Ecosystem alignment**: Following R community best practices
@@ -140,10 +145,10 @@ The `test_pak_installation.sh` script provides:
 - ✅ Same package verification approach
 
 ### Enhanced Features
-- 🚀 Batch installation for better performance
+- 🚀 Batch installation with better dependency resolution
 - 🚀 Native GitHub package support
 - 🚀 Improved error messages with pak's diagnostics
-- 🚀 Built-in caching capabilities
+- 🚀 Built-in caching capabilities for future BuildKit integration
 
 ## Next Steps
 
@@ -175,4 +180,4 @@ The `test_pak_installation.sh` script provides:
 ./test_pak_installation.sh
 ```
 
-This Phase 3 implementation successfully transforms the complex manual GitHub API handling into a clean, pak-based approach while maintaining full compatibility with the existing interface and improving performance, security, and maintainability.
+This Phase 3 implementation successfully transforms the complex manual GitHub API handling into a clean, pak-based approach while maintaining full compatibility with the existing interface. The primary benefits are code simplification, enhanced security, and preparation for significant performance improvements through BuildKit caching in Phase 5.
