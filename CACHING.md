@@ -1,10 +1,10 @@
 # Build Caching
 
-This project implements target-specific build caching to speed up Docker builds and reduce bandwidth usage, especially in CI/CD environments.
+This project implements target-specific build caching to speed up Docker builds and reduce bandwidth usage, especially for the pak-based R package system which benefits significantly from caching.
 
 ## Overview
 
-The caching system uses Docker BuildKit's registry cache feature with target-specific cache keys. Each build target (base, base-nvim, etc.) maintains its own cache, preventing cache pollution between different stages.
+The caching system uses Docker BuildKit's registry cache feature with target-specific cache keys. Each build target maintains its own cache, preventing cache pollution between different stages. This is particularly important for the R package installation stage which can take significant time without caching.
 
 ## Local Development
 
@@ -12,71 +12,85 @@ The caching system uses Docker BuildKit's registry cache feature with target-spe
 
 ```bash
 # Build with local cache only (default)
-./build-container.sh --base
+./build-container.sh --full
 
 # Build using registry cache
-./build-container.sh --base --cache-from ghcr.io/user/repo
+./build-container.sh --full --cache-from ghcr.io/jbearak/base-container
 
 # Build and update registry cache
-./build-container.sh --base --cache-from-to ghcr.io/user/repo
+./build-container.sh --full --cache-from-to ghcr.io/jbearak/base-container
 
-# Build without any cache
-./build-container.sh --base --no-cache
+# Build without any cache (clean build)
+./build-container.sh --full --no-cache
 ```
+
+### Available Build Targets
+
+The pak-based system supports these build targets:
+
+- `base` - Ubuntu base with system packages
+- `base-nvim` - Base + Neovim
+- `base-nvim-vscode` - Base + Neovim + VS Code Server
+- `base-nvim-vscode-tex` - Base + Neovim + VS Code + LaTeX
+- `base-nvim-vscode-tex-pandoc` - Base + Neovim + VS Code + LaTeX + Pandoc
+- `base-nvim-vscode-tex-pandoc-haskell` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell
+- `base-nvim-vscode-tex-pandoc-haskell-crossref` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell + pandoc-crossref
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell + pandoc-crossref + additional tools
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell + pandoc-crossref + additional tools + R with 600+ packages via pak
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell + pandoc-crossref + additional tools + R + Python
+- `full` - Complete development environment (default)
 
 ### Cache Helper Script
 
 Use `cache-helper.sh` for cache management:
 
 ```bash
-# Pre-warm cache for a specific target
-./cache-helper.sh warm base
-
-# Pre-warm cache for all targets
-./cache-helper.sh warm-all
+# Clean local Docker build cache
+./cache-helper.sh clean
 
 # List available cache images
 ./cache-helper.sh list
 
-# Clean local cache
-./cache-helper.sh clean
+# Pre-warm cache for specific target
+./cache-helper.sh warm base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r
 
-# Inspect cache details
-./cache-helper.sh inspect base
+# Pre-warm cache for all targets
+./cache-helper.sh warm-all
 ```
 
-## CI/CD Integration
+## pak-Specific Caching Benefits
 
-The GitHub Actions workflow (`.github/workflows/build.yml`) demonstrates:
+The pak-based R package system particularly benefits from caching:
 
-- **Multi-platform builds**: amd64 and arm64
-- **Target-specific caching**: Each target uses its own cache key
-- **Matrix builds**: All targets built in parallel
-- **Cache reuse**: Subsequent builds leverage existing cache layers
+### Cache Mount Points
+The Dockerfile uses BuildKit cache mounts for:
+- `/root/.cache/R/pak` - pak metadata and dependency cache
+- `/tmp/R-pkg-cache` - compiled package cache  
+- `/tmp/downloaded_packages` - source package downloads
+
+### Performance Impact
+- **First build**: ~30-45 minutes for 600+ R packages
+- **Cached build**: ~5-10 minutes (80%+ time savings)
+- **Incremental changes**: Only affected packages rebuild
+
+## Registry Caching
 
 ### Cache Keys
 
 Cache images are stored with target-specific tags:
 
-- `ghcr.io/user/repo/cache:base`
-- `ghcr.io/user/repo/cache:base-nvim`
-- `ghcr.io/user/repo/cache:base-nvim-vscode`
+- `ghcr.io/jbearak/base-container/cache:base`
+- `ghcr.io/jbearak/base-container/cache:base-nvim`
+- `ghcr.io/jbearak/base-container/cache:base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r`
 - etc.
 
-## Benefits
-
-1. **Faster builds**: Reuse layers from previous builds
-2. **Reduced bandwidth**: Only download changed layers
-3. **Target isolation**: Changes to one target don't invalidate others
-4. **CI efficiency**: Parallel builds with shared cache layers
-
-## Registry Requirements
+### Registry Requirements
 
 For registry caching, you need:
 
 - Push access to the container registry
 - Docker BuildKit enabled (default in modern Docker)
-- Sufficient registry storage quota
+- Sufficient registry storage quota (R packages can be large)
 
 ## Example Workflows
 
@@ -84,21 +98,26 @@ For registry caching, you need:
 
 ```bash
 # First build (slow, populates cache)
-./build-container.sh --base --cache-from-to ghcr.io/user/repo
+./build-container.sh --full --cache-from-to ghcr.io/jbearak/base-container
 
 # Subsequent builds (fast, uses cache)
-./build-container.sh --base --cache-from ghcr.io/user/repo
+./build-container.sh --full --cache-from ghcr.io/jbearak/base-container
+
+# Test specific R stage only
+./build-container.sh --base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r --cache-from ghcr.io/jbearak/base-container
 ```
 
-### CI/CD Pipeline
+### Multi-Architecture Builds
 
-The GitHub Actions workflow automatically:
-
-1. Sets up Docker BuildX
-2. Logs into the container registry
-3. Builds all targets with registry caching
-4. Runs target-specific tests
-5. Creates multi-arch manifests
+```bash
+# Build for multiple architectures with caching
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --target full \
+  --cache-from type=registry,ref=ghcr.io/jbearak/base-container/cache:full \
+  --cache-to type=registry,ref=ghcr.io/jbearak/base-container/cache:full,mode=max \
+  -t base-container:multiarch .
+```
 
 ### Emergency Cache Reset
 
@@ -107,8 +126,15 @@ The GitHub Actions workflow automatically:
 ./cache-helper.sh clean
 
 # Build without cache to reset
-./build-container.sh --full --no-cache --cache-to ghcr.io/user/repo
+./build-container.sh --full --no-cache --cache-to ghcr.io/jbearak/base-container
 ```
+
+## Benefits
+
+1. **Faster R Package Builds**: pak cache mounts provide 80%+ time savings
+2. **Reduced Bandwidth**: Only download changed packages
+3. **Target Isolation**: Changes to one target don't invalidate others
+4. **Multi-Architecture Support**: Cache works across AMD64 and ARM64
 
 ## Troubleshooting
 
@@ -116,6 +142,15 @@ The GitHub Actions workflow automatically:
 
 **Permission errors**: Verify push access to the registry.
 
-**Storage issues**: Registry caches can be large; monitor quota usage.
+**Storage issues**: R package caches can be large; monitor quota usage.
 
 **Stale cache**: Use `--no-cache` occasionally to ensure clean builds.
+
+**pak cache issues**: If pak cache becomes corrupted, clean local cache and rebuild.
+
+## Cache Management Best Practices
+
+1. **Regular cleanup**: Run `./cache-helper.sh clean` periodically
+2. **Target-specific builds**: Use specific targets during development to avoid rebuilding everything
+3. **Registry cache**: Use `--cache-from-to` for shared development environments
+4. **Monitor storage**: Registry caches for R packages can consume significant space
