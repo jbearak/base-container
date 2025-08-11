@@ -53,12 +53,12 @@ start_time=$(date +%s)
 installed_count=0
 failed_packages=()
 
-# Function to install packages using pak with progress reporting
+# Function to install packages using pak with simple progress reporting
 install_packages_with_pak() {
     local packages_list="$1"
     echo "📦 Installing CRAN packages with pak..."
     
-    # Create R script for pak installation with progress reporting
+    # Create R script for pak installation with simple progress reporting
     local r_script="
     library(pak)
     
@@ -68,32 +68,13 @@ install_packages_with_pak() {
     
     cat('Installing', length(packages), 'packages with pak...\\n')
     
-    # Configure pak to show more verbose output
+    # Configure pak to show building messages but suppress detailed output
     options(pak.no_extra_messages = FALSE)
     
-    # Install packages with pak, showing progress for each package
+    # Install packages with pak
     tryCatch({
-        # Install packages one by one to show individual progress
-        for (i in seq_along(packages)) {
-            pkg <- packages[i]
-            cat('\\n📦 [', i, '/', length(packages), '] Installing', pkg, '...\\n')
-            flush.console()
-            
-            # Check if package is already installed
-            if (requireNamespace(pkg, quietly = TRUE)) {
-                cat('✅ Package', pkg, 'already installed\\n')
-                next
-            }
-            
-            # Install the package
-            start_time <- Sys.time()
-            pak::pkg_install(pkg, ask = FALSE)
-            end_time <- Sys.time()
-            duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
-            
-            cat('✅ Installed', pkg, 'in', duration, 'seconds\\n')
-        }
-        cat('\\nSUCCESS: All CRAN packages installed\\n')
+        pak::pkg_install(packages, ask = FALSE)
+        cat('SUCCESS: All CRAN packages installed\\n')
     }, error = function(e) {
         cat('ERROR:', conditionMessage(e), '\\n')
         quit(status = 1)
@@ -122,12 +103,12 @@ install_package_individual() {
     local package="$1"
     local r_command="
     pkg <- '$package'
-    cat('📦 Building', pkg, '...\\n')
-    flush.console()
     
     if (require(pkg, character.only=TRUE, quietly=TRUE)) { 
         cat('already installed\\n') 
     } else { 
+        cat('📦 Building', pkg, '...\\n')
+        flush.console()
         start_time <- Sys.time()
         install.packages(pkg, repos='https://cloud.r-project.org/', dependencies=TRUE, quiet=TRUE)
         end_time <- Sys.time()
@@ -185,7 +166,7 @@ echo "📦 Installing additional packages ..."
 # Install mcmcplots from CRAN archive using install.packages() (pak fails with this package)
 echo -n "📦 Installing mcmcplots from CRAN archive with install.packages()... "
 mcmcplots_command="
-cat('📦 Building mcmcplots from CRAN archive...\\n')
+cat('📦 Building mcmcplots...\\n')
 flush.console()
 tryCatch({
     start_time <- Sys.time()
@@ -228,7 +209,7 @@ fi
 echo -n "🌐 Installing httpgd from GitHub with pak... "
 httpgd_command="
 library(pak)
-cat('📦 Building httpgd from GitHub...\\n')
+cat('📦 Building httpgd...\\n')
 flush.console()
 tryCatch({
     start_time <- Sys.time()
@@ -265,7 +246,7 @@ fi
 echo -n "🎨 Installing colorout from GitHub with pak... "
 colorout_command="
 library(pak)
-cat('📦 Building colorout from GitHub...\\n')
+cat('📦 Building colorout...\\n')
 flush.console()
 tryCatch({
     start_time <- Sys.time()
