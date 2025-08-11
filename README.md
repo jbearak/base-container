@@ -9,6 +9,7 @@ A comprehensive, reproducible development environment using VS Code dev containe
 - **Performance**: Fast rebuilds with BuildKit caching
 - **Multi-Architecture**: Supports both AMD64 and ARM64
 
+
 ## Quick Setup
 
 **Prerequisites**: [VS Code](https://code.visualstudio.com/) with [Remote Development](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.vscode-remote-extensionpack) extension
@@ -99,26 +100,6 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
    - When prompted, click "Reopen in Container"
 
 The container will automatically download and start your development environment.
-
-## R Package System
-
-The container includes 600+ R packages installed using the modern [pak](https://pak.r-lib.org/) package manager for better dependency resolution and faster installation. Key packages include:
-
-### Core Data Science
-- **Tidyverse**: ggplot2, dplyr, tidyr, readr, stringr, lubridate
-- **Data Manipulation**: data.table, dtplyr
-- **Statistics**: lme4, brms, rstanarm, bayesplot
-- **Machine Learning**: caret, randomForest, glmnet
-
-### Visualization
-- **Plotting**: ggplot2, plotly, leaflet, DT
-- **Extensions**: gganimate, ggridges, ggforce, patchwork
-- **Interactive**: shiny, crosstalk, htmlwidgets
-
-### Special Packages
-- **httpgd**: Modern R graphics device for web-based plotting
-- **colorout**: Colorized R output in terminal
-- **mcmcplots**: MCMC diagnostic plots
 
 ## Using the Container with an Agentic Coding Tool
 
@@ -215,6 +196,16 @@ If you prefer not to build a custom image, you can install Q CLI on container st
 
 **Note:** Option 1 is recommended as it pre-installs Q CLI during image build, making container startup much faster. Option 2 reinstalls Q CLI every time the container starts.
 
+
+### User model
+
+As an aesthetic preference, the container contains a non-root user named "me". To retain this design choice while ensuring compatibility with VS Code, the following adjustments are made:
+
+- The image retains the default 'vscode' user required by Dev Containers/VS Code but also creates a 'me' user and 'me' group that share the same UID/GID as 'vscode'.
+- Both users have the same home directory: /home/me (the previous /home/vscode is renamed).
+- This design ensures compatibility with VS Code while making file listings show owner and group as 'me'.
+
+
 ## Research containers with tmux
 
 For multi-day analyses, keep containers running with tmux sessions to survive disconnections (but not reboots).
@@ -269,7 +260,6 @@ If you use VS Code to create the container, add the following to your `.devconta
 
 **Limitations:** Reboots terminate all processes. Container auto-restarts but jobs must be resumed manually. Use checkpointing for critical work.
 
----
 
 ## Technical Implementation Details
 
@@ -305,6 +295,25 @@ The container uses a non-root user named "me" for security and compatibility:
 - Compatible with VS Code Dev Containers (shares UID/GID with 'vscode' user)
 - Home directory: `/home/me`
 - Proper file permissions for mounted volumes
+
+
+## Troubleshooting
+
+### Quick Diagnostics
+
+```bash
+# System health check
+docker --version && docker buildx version
+
+# pak system check
+docker run --rm ghcr.io/jbearak/base-container:latest R -e 'library(pak); pak::pak_config()'
+
+# Check cache usage
+docker system df
+
+# Check pak cache (if container exists)
+docker run --rm base-container:pak R -e 'pak::cache_summary()' 2>/dev/null || echo "Container not built yet"
+```
 
 ## License
 
