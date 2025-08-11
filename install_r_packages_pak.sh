@@ -1,14 +1,10 @@
 #!/bin/bash
-# install_r_packages_pak.sh - pak-based R package installer with BuildKit cache optimization
-# Phase 2: Core pak implementation with architecture-segregated site libraries
-
-set -euo pipefail
+# install_r_packages_pak.sh - pak-based R package installer with failed package reporting
+# Phase 3 implementation of pak migration plan
 
 # Configuration
 PACKAGES_FILE="/tmp/packages.txt"
 DEBUG_MODE=false
-R_VERSION=""
-TARGETARCH=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -29,312 +25,267 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Detect R version and architecture
-detect_environment() {
-    echo "🔍 Detecting R version and architecture..."
-    
-    # Get R major.minor version (e.g., "4.5" from "R version 4.5.1")
-    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9]\+\.[0-9]\+\).*/\1/')
-    
-    # Get target architecture from dpkg or uname
-    if command -v dpkg >/dev/null 2>&1; then
-        TARGETARCH=$(dpkg --print-architecture)
-    else
-        case "$(uname -m)" in
-            x86_64) TARGETARCH="amd64" ;;
-            aarch64|arm64) TARGETARCH="arm64" ;;
-            *) echo "❌ Unsupported architecture: $(uname -m)"; exit 1 ;;
-        esac
-    fi
-    
-    echo "   R version: $R_VERSION"
-    echo "   Architecture: $TARGETARCH"
-    echo
-}
+# Check if packages file exists
+if [[ ! -f "$PACKAGES_FILE" ]]; then
+    echo "❌ Package file not found: $PACKAGES_FILE"
+    exit 1
+fi
 
-# Setup site library with architecture segregation
-setup_site_library() {
-    local site_lib_base="/opt/R/site-library"
-    local site_lib_arch="${site_lib_base}/${R_VERSION}-${TARGETARCH}"
-    local site_lib_compat="/usr/local/lib/R/site-library"
-    
-    echo "📁 Setting up architecture-segregated site library..."
-    echo "   Base path: $site_lib_base"
-    echo "   Arch-specific: $site_lib_arch"
-    echo "   Compatibility: $site_lib_compat"
-    
-    # Create architecture-specific directory
-    mkdir -p "$site_lib_arch"
-    
-    # Create compatibility symlink if it doesn't exist
-    if [[ ! -e "$site_lib_compat" ]]; then
-        ln -sf "$site_lib_arch" "$site_lib_compat"
-        echo "   ✅ Created compatibility symlink: $site_lib_compat -> $site_lib_arch"
-    else
-        echo "   ℹ️  Compatibility path already exists: $site_lib_compat"
-    fi
-    
-    # Set R_LIBS_SITE environment variable
-    export R_LIBS_SITE="$site_lib_arch"
-    echo "   ✅ Set R_LIBS_SITE=$R_LIBS_SITE"
-    echo
-}
+# Read packages from file, removing empty lines
+mapfile -t packages < <(grep -v '^\s*$' "$PACKAGES_FILE")
+total_cran_packages=${#packages[@]}
 
-# Install and configure pak
-install_pak() {
-    echo "📦 Installing and configuring pak..."
-    
-    # Install pak from CRAN
-    local pak_install_cmd='install.packages("pak", repos="https://cloud.r-project.org/", dependencies=TRUE, quiet=TRUE)'
+# Define special packages
+declare -A special_packages=(
+    ["mcmcplots"]="https://cran.r-project.org/src/contrib/Archive/mcmcplots/mcmcplots_0.4.3.tar.gz"
+    ["httpgd"]="nx10/httpgd"
+    ["colorout"]="jalvesaq/colorout"
+)
+
+total_special_packages=${#special_packages[@]}
+total_packages=$((total_cran_packages + total_special_packages))
+
+if [[ $total_packages -eq 0 ]]; then
+    echo "ℹ️  No packages to install"
+    exit 0
+fi
+
+echo "📦 Installing $total_packages R packages using pak..."
+echo "   📋 CRAN packages: $total_cran_packages"
+echo "   🔧 Special packages: $total_special_packages"
+echo "🕒 Start time: $(date)"
+echo
+
+start_time=$(date +%s)
+installed_count=0
+failed_packages=()
+
+# Function to run R command with proper error handling
+run_r_command() {
+    local r_command="$1"
+    local package_name="$2"
+    local debug_output="$3"
     
     if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo "   Installing pak with debug output..."
-        echo "$pak_install_cmd" | R --slave --no-restore
-    else
-        echo "   Installing pak..."
-        if ! echo "$pak_install_cmd" | R --slave --no-restore >/dev/null 2>&1; then
-            echo "❌ Failed to install pak"
-            exit 1
-        fi
+        echo "R command: $r_command"
     fi
     
-    # Configure pak settings
-    local pak_config_cmd='
-        library(pak)
-        # Configure pak for optimal performance and caching
-        pak::pak_config_set("dependencies" = TRUE)
-        pak::pak_config_set("ask" = FALSE)
-        # Enable parallel downloads and builds
-        pak::pak_config_set("build_vignettes" = FALSE)
-        cat("pak configured successfully\n")
-    '
+    # Capture R output and exit code
+    local r_output
+    local exit_code
+    r_output=$(echo "$r_command" | R --slave --no-restore 2>&1)
+    exit_code=$?
     
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo "   Configuring pak with debug output..."
-        echo "$pak_config_cmd" | R --slave --no-restore
-    else
-        echo "   Configuring pak..."
-        if ! echo "$pak_config_cmd" | R --slave --no-restore >/dev/null 2>&1; then
-            echo "❌ Failed to configure pak"
-            exit 1
-        fi
+    # Show output in debug mode
+    if [[ "$DEBUG_MODE" == "true" || "$debug_output" == "true" ]]; then
+        echo "$r_output"
     fi
     
-    echo "   ✅ pak installed and configured"
-    echo
-}
-
-# Install CRAN packages using pak
-install_cran_packages() {
-    local packages_file="$1"
-    
-    if [[ ! -f "$packages_file" ]]; then
-        echo "❌ Package file not found: $packages_file"
-        exit 1
-    fi
-    
-    # Count packages
-    local total_packages
-    total_packages=$(grep -c -v '^\s*$' "$packages_file" || echo "0")
-    
-    if [[ $total_packages -eq 0 ]]; then
-        echo "ℹ️  No CRAN packages to install"
+    # Check for success indicators in output
+    if [[ $exit_code -eq 0 ]] && ! echo "$r_output" | grep -q -i "error\|failed\|cannot"; then
+        echo "✅"
+        ((installed_count++))
         return 0
-    fi
-    
-    echo "📦 Installing $total_packages CRAN packages using pak..."
-    echo "🕒 Start time: $(date)"
-    
-    local start_time
-    start_time=$(date +%s)
-    
-    # Create R command to install packages
-    local install_cmd='
-        library(pak)
-        packages <- readLines("'$packages_file'")
-        packages <- packages[packages != "" & !grepl("^\\s*$", packages)]
-        
-        cat("Installing", length(packages), "packages...\n")
-        
-        tryCatch({
-            pak::pkg_install(packages)
-            cat("SUCCESS: All CRAN packages installed\n")
-        }, error = function(e) {
-            cat("ERROR:", conditionMessage(e), "\n")
-            quit(status = 1)
-        })
-    '
-    
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo "   Installing with debug output..."
-        echo "$install_cmd" | R --slave --no-restore
     else
-        echo "   Installing packages..."
-        if ! echo "$install_cmd" | R --slave --no-restore; then
-            echo "❌ Failed to install CRAN packages"
-            exit 1
+        echo "❌"
+        failed_packages+=("$package_name")
+        if [[ "$DEBUG_MODE" == "true" ]]; then
+            echo "Error output: $r_output"
         fi
+        return 1
     fi
-    
-    local end_time
-    end_time=$(date +%s)
-    local duration=$((end_time - start_time))
-    local minutes=$((duration / 60))
-    local seconds=$((duration % 60))
-    
-    echo "   ✅ CRAN packages installed in ${minutes}m ${seconds}s"
-    echo
 }
 
-# Install special packages (GitHub, archive, etc.)
-install_special_packages() {
-    echo "📦 Installing special packages..."
-    
-    # Install mcmcplots from CRAN archive
-    echo "   📦 Installing mcmcplots from CRAN archive..."
-    local mcmcplots_cmd='
-        library(pak)
-        tryCatch({
-            pak::pkg_install("https://cran.r-project.org/src/contrib/Archive/mcmcplots/mcmcplots_0.4.3.tar.gz")
-            cat("SUCCESS: mcmcplots installed\n")
-        }, error = function(e) {
-            cat("ERROR installing mcmcplots:", conditionMessage(e), "\n")
-            quit(status = 1)
-        })
-    '
-    
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo "$mcmcplots_cmd" | R --slave --no-restore
-    else
-        if ! echo "$mcmcplots_cmd" | R --slave --no-restore >/dev/null 2>&1; then
-            echo "❌ Failed to install mcmcplots"
-            exit 1
-        fi
-    fi
-    echo "      ✅ mcmcplots installed"
-    
-    # Install httpgd from GitHub
-    echo "   🌐 Installing httpgd from GitHub..."
-    local httpgd_cmd='
-        library(pak)
-        tryCatch({
-            pak::pkg_install("nx10/httpgd")
-            cat("SUCCESS: httpgd installed\n")
-        }, error = function(e) {
-            cat("ERROR installing httpgd:", conditionMessage(e), "\n")
-            quit(status = 1)
-        })
-    '
-    
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo "$httpgd_cmd" | R --slave --no-restore
-    else
-        if ! echo "$httpgd_cmd" | R --slave --no-restore >/dev/null 2>&1; then
-            echo "❌ Failed to install httpgd"
-            exit 1
-        fi
-    fi
-    echo "      ✅ httpgd installed"
-    
-    # Install colorout from GitHub
-    echo "   🎨 Installing colorout from GitHub..."
-    local colorout_cmd='
-        library(pak)
-        tryCatch({
-            pak::pkg_install("jalvesaq/colorout")
-            cat("SUCCESS: colorout installed\n")
-        }, error = function(e) {
-            cat("ERROR installing colorout:", conditionMessage(e), "\n")
-            quit(status = 1)
-        })
-    '
-    
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo "$colorout_cmd" | R --slave --no-restore
-    else
-        if ! echo "$colorout_cmd" | R --slave --no-restore >/dev/null 2>&1; then
-            echo "❌ Failed to install colorout"
-            exit 1
-        fi
-    fi
-    echo "      ✅ colorout installed"
-    
-    echo "   ✅ All special packages installed"
-    echo
+# Install pak if not already available
+echo "🔧 Ensuring pak is available..."
+pak_check_command='
+if (!requireNamespace("pak", quietly = TRUE)) {
+    install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
 }
+cat("pak ready\n")
+'
 
-# Verify installation
-verify_installation() {
-    echo "🔍 Verifying package installation..."
-    
-    local verify_cmd='
-        # Get list of installed packages
-        installed <- installed.packages()[,"Package"]
-        cat("Total packages installed:", length(installed), "\n")
-        
-        # Check specific packages
-        test_packages <- c("pak", "dplyr", "ggplot2", "httpgd", "colorout", "mcmcplots")
-        
-        for (pkg in test_packages) {
-            if (pkg %in% installed) {
-                cat("✅", pkg, "\n")
-            } else {
-                cat("❌", pkg, "(not found)\n")
-            }
-        }
-        
-        # Show library paths
-        cat("\nLibrary paths:\n")
-        for (path in .libPaths()) {
-            cat("  ", path, "\n")
-        }
-    '
-    
-    echo "$verify_cmd" | R --slave --no-restore
+echo -n "📦 Installing/checking pak... "
+if run_r_command "$pak_check_command" "pak" "false"; then
+    : # Success message already printed
+else
+    echo "❌ Failed to install pak - cannot continue"
+    exit 1
+fi
+
+# Install CRAN packages in batch using pak
+if [[ $total_cran_packages -gt 0 ]]; then
     echo
+    echo "📦 Installing $total_cran_packages CRAN packages in batch..."
+    
+    # Create R vector of package names
+    package_vector=$(printf '"%s"' "${packages[0]}")
+    for ((i=1; i<${#packages[@]}; i++)); do
+        package_vector+=", \"${packages[i]}\""
+    done
+    
+    cran_install_command="
+    library(pak)
+    packages <- c($package_vector)
+    cat('Installing packages:', paste(packages, collapse=', '), '\n')
+    
+    # Install packages with error handling
+    tryCatch({
+        pak::pkg_install(packages, dependencies = TRUE)
+        cat('CRAN batch installation completed\n')
+    }, error = function(e) {
+        cat('CRAN batch installation error:', conditionMessage(e), '\n')
+        quit(status = 1)
+    })
+    "
+    
+    echo -n "📦 Installing CRAN packages batch... "
+    if run_r_command "$cran_install_command" "CRAN_batch" "true"; then
+        # Count successful installations (approximate - pak handles individual failures internally)
+        installed_count=$((installed_count + total_cran_packages - 1)) # -1 because run_r_command already incremented
+    else
+        # If batch fails, we'll need individual installation fallback
+        echo "⚠️  Batch installation failed, falling back to individual package installation..."
+        
+        # Reset counter and try individual installations
+        installed_count=$((installed_count - 1))
+        
+        for package in "${packages[@]}"; do
+            [[ -z "${package// }" ]] && continue
+            
+            individual_install_command="
+            library(pak)
+            tryCatch({
+                pak::pkg_install('$package', dependencies = TRUE)
+                cat('success\n')
+            }, error = function(e) {
+                cat('failed:', conditionMessage(e), '\n')
+                quit(status = 1)
+            })
+            "
+            
+            echo -n "📦 Installing $package... "
+            run_r_command "$individual_install_command" "$package" "false"
+        done
+    fi
+fi
+
+# Install special packages
+echo
+echo "📦 Installing special packages..."
+
+for package_name in "${!special_packages[@]}"; do
+    package_spec="${special_packages[$package_name]}"
+    
+    case "$package_name" in
+        "mcmcplots")
+            echo -n "📦 Installing mcmcplots from CRAN archive... "
+            special_install_command="
+            library(pak)
+            tryCatch({
+                pak::pkg_install('$package_spec', dependencies = TRUE)
+                cat('success\n')
+            }, error = function(e) {
+                cat('failed:', conditionMessage(e), '\n')
+                quit(status = 1)
+            })
+            "
+            ;;
+        "httpgd")
+            echo -n "🌐 Installing httpgd from GitHub... "
+            special_install_command="
+            library(pak)
+            tryCatch({
+                pak::pkg_install('$package_spec', dependencies = TRUE)
+                cat('success\n')
+            }, error = function(e) {
+                cat('failed:', conditionMessage(e), '\n')
+                quit(status = 1)
+            })
+            "
+            ;;
+        "colorout")
+            echo -n "🎨 Installing colorout from GitHub... "
+            special_install_command="
+            library(pak)
+            tryCatch({
+                pak::pkg_install('$package_spec', dependencies = TRUE)
+                cat('success\n')
+            }, error = function(e) {
+                cat('failed:', conditionMessage(e), '\n')
+                quit(status = 1)
+            })
+            "
+            ;;
+    esac
+    
+    run_r_command "$special_install_command" "$package_name" "false"
+done
+
+# Verify installations
+echo
+echo "🔍 Verifying package installations..."
+
+verify_command='
+library(pak)
+
+# Get list of installed packages
+installed_pkgs <- rownames(installed.packages())
+
+# Define expected packages
+cran_packages <- readLines("'$PACKAGES_FILE'")
+cran_packages <- cran_packages[cran_packages != ""]
+
+special_packages <- c("mcmcplots", "httpgd", "colorout")
+all_expected <- c(cran_packages, special_packages)
+
+# Check which packages are missing
+missing_packages <- setdiff(all_expected, installed_pkgs)
+
+if (length(missing_packages) > 0) {
+    cat("Missing packages:", paste(missing_packages, collapse = ", "), "\n")
+    quit(status = 1)
+} else {
+    cat("All packages verified successfully\n")
 }
+'
 
-# Main execution
-main() {
-    echo "==========================================="
-    echo "🚀 PAK-BASED R PACKAGE INSTALLER (Phase 2)"
-    echo "==========================================="
-    echo "🕒 Start time: $(date)"
-    echo
-    
-    local overall_start
-    overall_start=$(date +%s)
-    
-    # Setup environment
-    detect_environment
-    setup_site_library
-    
-    # Install pak
-    install_pak
-    
-    # Install packages
-    install_cran_packages "$PACKAGES_FILE"
-    install_special_packages
-    
-    # Verify installation
-    verify_installation
-    
-    # Final summary
-    local overall_end
-    overall_end=$(date +%s)
-    local total_duration=$((overall_end - overall_start))
-    local total_minutes=$((total_duration / 60))
-    local total_seconds=$((total_duration % 60))
-    
-    echo "==========================================="
-    echo "🎉 PAK INSTALLATION COMPLETED SUCCESSFULLY"
-    echo "==========================================="
-    echo "   🕒 Total time: ${total_minutes}m ${total_seconds}s"
-    echo "   📅 End time: $(date)"
-    echo "   📁 Site library: $R_LIBS_SITE"
-    echo "   🏗️  Architecture: ${R_VERSION}-${TARGETARCH}"
-    echo
-}
+echo -n "🔍 Verifying all packages... "
+if run_r_command "$verify_command" "verification" "false"; then
+    : # Success message already printed
+else
+    echo "⚠️  Some packages may not have installed correctly"
+fi
 
-# Run main function
-main "$@"
+# Final summary
+end_time=$(date +%s)
+total_duration=$((end_time - start_time))
+total_minutes=$((total_duration / 60))
+total_seconds=$((total_duration % 60))
+failed_count=${#failed_packages[@]}
+
+echo
+echo "=========================================="
+echo "📊 R PACKAGE INSTALLATION SUMMARY (pak)"
+echo "=========================================="
+echo "   ✅ Successfully installed: $installed_count packages"
+echo "   ❌ Failed installations: $failed_count packages"
+echo "   🕒 Total time: ${total_minutes}m ${total_seconds}s"
+echo "   📅 End time: $(date)"
+echo
+
+if [[ $failed_count -gt 0 ]]; then
+    echo "❌ FAILED PACKAGES:"
+    echo "==================="
+    for pkg in "${failed_packages[@]}"; do
+        echo "   • $pkg"
+    done
+    echo
+    echo "⚠️  Build completed with $failed_count failed package installations."
+    echo "    Consider investigating these packages and their system dependencies."
+    exit 1
+else
+    echo "🎉 ALL PACKAGES INSTALLED SUCCESSFULLY!"
+    echo "   No failed packages to report."
+    echo "   pak-based installation completed successfully."
+fi
