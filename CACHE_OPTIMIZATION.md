@@ -1,6 +1,6 @@
 # Cache Optimization Guide
 
-This guide provides advanced strategies for optimizing BuildKit cache performance in the pak-based R package installation system.
+This guide provides strategies for optimizing BuildKit cache performance in the pak-based R package installation system.
 
 ## Overview
 
@@ -203,90 +203,23 @@ docker run --rm base-container:pak du -sh /root/.cache/R/pak
 
 ## Advanced Optimization Techniques
 
-### 1. Selective Package Caching
+### 1. Future Package Grouping Strategy (Not Currently Implemented)
 
-#### Package Grouping Strategy
+**Note**: This is a future enhancement suggestion, not current functionality.
 
 ```dockerfile
-# Group stable packages together
+# Future: Group stable packages together
 COPY R_packages_stable.txt /tmp/
 RUN --mount=type=cache,target=/root/.cache/R/pak \
     R -e 'pak::pkg_install(readLines("/tmp/R_packages_stable.txt"))'
 
-# Group frequently updated packages separately
+# Future: Group frequently updated packages separately
 COPY R_packages_dev.txt /tmp/
 RUN --mount=type=cache,target=/root/.cache/R/pak \
     R -e 'pak::pkg_install(readLines("/tmp/R_packages_dev.txt"))'
 ```
 
-#### Conditional Package Installation
-
-```dockerfile
-# Install packages only if not cached
-RUN --mount=type=cache,target=/root/.cache/R/pak \
-    R -e 'if(!require("dplyr", quietly=TRUE)) pak::pkg_install("dplyr")'
-```
-
-### 2. Cache Warming Automation
-
-#### CI/CD Cache Warming
-
-```yaml
-# GitHub Actions example
-name: Warm Cache
-on:
-  schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM
-
-jobs:
-  warm-cache:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Login to Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Warm Cache
-        run: ./cache-helper.sh warm-all
-```
-
-#### Automated Cache Validation
-
-```bash
-#!/bin/bash
-# validate-cache.sh - Verify cache integrity
-
-echo "Validating cache integrity..."
-
-# Check registry cache availability
-for target in base pak-full; do
-    if docker buildx imagetools inspect "ghcr.io/user/repo/cache:$target" >/dev/null 2>&1; then
-        echo "✅ Cache available for $target"
-    else
-        echo "❌ Cache missing for $target"
-    fi
-done
-
-# Check local cache effectiveness
-echo "Testing cache effectiveness..."
-start_time=$(date +%s)
-docker buildx build --file Dockerfile.pak --target pak-full . >/dev/null 2>&1
-end_time=$(date +%s)
-build_time=$((end_time - start_time))
-
-if [ $build_time -lt 1800 ]; then  # Less than 30 minutes
-    echo "✅ Cache is effective (build time: ${build_time}s)"
-else
-    echo "⚠️  Cache may need optimization (build time: ${build_time}s)"
-fi
-```
-
-### 3. Cache Maintenance
+### 2. Cache Maintenance
 
 #### Regular Cache Cleanup
 
@@ -294,15 +227,17 @@ fi
 #!/bin/bash
 # cache-maintenance.sh - Regular cache maintenance
 
-# Clean old cache entries (older than 7 days)
+# Clean old cache entries (older than 7 days since last access)
 docker builder prune --filter until=168h
 
-# Clean unused pak cache
+# Clean unused pak cache (files not accessed in 7 days)
 docker run --rm -v pak_cache:/cache alpine find /cache -atime +7 -delete
 
 # Verify cache health
-./validate-cache.sh
+docker system df
 ```
+
+**Note**: The `until=168h` filter removes cache entries that haven't been accessed in 168 hours (7 days), not created 7 days ago.
 
 #### Cache Size Management
 
@@ -310,10 +245,12 @@ docker run --rm -v pak_cache:/cache alpine find /cache -atime +7 -delete
 # Monitor cache size growth
 docker system df --format "table {{.Type}}\t{{.TotalCount}}\t{{.Size}}\t{{.Reclaimable}}"
 
-# Set cache size limits
-export DOCKER_BUILDKIT_CACHE_MAX_SIZE=10GB
+# Set cache size limits (increased for our use case)
+export DOCKER_BUILDKIT_CACHE_MAX_SIZE=50GB
 
 # Implement cache rotation
+# until=72h: Remove entries not accessed in 72 hours
+# keep-storage=5GB: Keep at least 5GB of the most recently used cache
 docker builder prune --filter until=72h --keep-storage 5GB
 ```
 
@@ -340,10 +277,10 @@ docker builder prune -f
 docker system prune -f
 
 # Rebuild cache from scratch
-./build-pak-container.sh --no-cache --cache-to "type=registry,ref=ghcr.io/user/repo/cache:pak-full"
+./build-pak-container.sh --no-cache --cache-from-to "ghcr.io/user/repo"
 
 # Verify cache integrity
-./validate-cache.sh
+docker system df
 ```
 
 ### Performance Regression Analysis
@@ -369,7 +306,7 @@ tail -20 build-times.log | awk '{print $4}' | sort -n
 
 ```bash
 # Development cycle with cache optimization
-./build-pak-container.sh --cache-from ghcr.io/user/repo  # Use existing cache
+./build-pak-container.sh --cache-from-to ghcr.io/user/repo  # Use existing cache
 # Make changes to R_packages.txt
 ./build-pak-container.sh --cache-from-to ghcr.io/user/repo  # Update cache
 ```
