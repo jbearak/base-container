@@ -200,11 +200,16 @@ while [[ $# -gt 0 ]]; do
     echo "Other Options:"
     echo "  --debug                              Show verbose R package installation logs (default: quiet)"
     echo "  --test                               Run tests after building"
-    echo "  --no-cache                           Build without using Docker cache"
+    echo "  --no-cache                           Build without using any cache (local or registry)"
     echo "  --cache-from <registry>              Use registry cache from specified registry (e.g., ghcr.io/user/repo)"
     echo "  --cache-to <registry>                Push cache to specified registry"
     echo "  --cache-from-to <registry>           Use and update registry cache"
     echo "  -h, --help                           Show this help message"
+    echo ""
+    echo "Caching:"
+    echo "  By default, local BuildKit cache is used for faster rebuilds."
+    echo "  Use --no-cache to disable all caching."
+    echo "  Use --cache-from-to <registry> for shared registry cache."
     echo ""
     echo "Examples:"
     echo "  $0 --base                         # Quick build for testing base system"
@@ -234,7 +239,13 @@ if [ -n "$CACHE_REGISTRY" ]; then
     TARGET_CACHE_MODE="${TARGET_CACHE_MODE} --cache-to type=registry,ref=${CACHE_REGISTRY}/cache:${BUILD_TARGET},mode=max"
   fi
 else
-  TARGET_CACHE_MODE="$CACHE_MODE"
+  # If no registry cache is specified, use local cache by default (unless --no-cache is used)
+  if [ -z "$NO_CACHE" ]; then
+    TARGET_CACHE_MODE="--cache-from type=local,src=/tmp/.buildx-cache --cache-to type=local,dest=/tmp/.buildx-cache,mode=max"
+    echo "🗂️  Using local BuildKit cache at /tmp/.buildx-cache"
+  else
+    TARGET_CACHE_MODE="$CACHE_MODE"
+  fi
 fi
 
 # Use docker buildx for better caching support
