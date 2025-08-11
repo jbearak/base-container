@@ -1,40 +1,14 @@
 # Base Container
 
-A comprehensive, reproducible development environment using VS Code dev containers with **pak-based R package management** for optimal performance and caching.
+A comprehensive, reproducible development environment using VS Code dev containers. Includes essential tools for data science, development, and document preparation.
 
 ## Features
 - **Development Tools**: Git, R, Python, shell utilities
-- **R Packages**: 200+ packages with pak-based installation and BuildKit caching
+- **R Packages**: Comprehensive set of packages for data analysis, modeling, and visualization
 - **Document Preparation**: LaTeX, Pandoc for typesetting
-- **Performance Optimized**: 50%+ faster builds with advanced caching
-- **Multi-Architecture**: Native support for amd64 and arm64
+- **Performance**: Fast rebuilds with BuildKit caching
+- **Multi-Architecture**: Supports both AMD64 and ARM64
 
-## pak-based R Package System
-
-This container uses **pak** (modern R package manager) instead of traditional `install.packages()` for:
-
-- **50%+ build time reduction** with BuildKit cache optimization
-- **Unified package management** for CRAN, GitHub, and archive packages
-- **Enhanced security** through consistent HTTPS handling
-- **Better error handling** and automatic retry mechanisms
-- **Architecture-segregated libraries** for multi-platform consistency
-
-### Package Categories
-
-- **CRAN Packages**: 200+ packages from `R_packages.txt`
-- **GitHub Packages**: httpgd (nx10/httpgd), colorout (jalvesaq/colorout)
-- **Archive Packages**: mcmcplots from CRAN archive
-
-### Architecture
-
-```
-/opt/R/site-library/
-├── 4.5-amd64/          # R 4.5 on amd64 architecture
-├── 4.5-arm64/          # R 4.5 on arm64 architecture
-└── ...
-
-/usr/local/lib/R/site-library -> /opt/R/site-library/${R_MM}-${TARGETARCH}
-```
 
 ## Quick Setup
 
@@ -126,63 +100,6 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
    - When prompted, click "Reopen in Container"
 
 The container will automatically download and start your development environment.
-
-## Building and Performance
-
-### Building the Container
-
-```bash
-# Build with pak-based system (recommended)
-./build-pak-container.sh
-
-# Build with cache optimization
-./build-pak-container.sh --cache-from-to ghcr.io/jbearak/base-container
-
-# Build without cache (for testing)
-./build-pak-container.sh --no-cache
-```
-
-### Performance Monitoring
-
-```bash
-# Run performance benchmarks
-./test_build_performance.sh
-
-# Generate build metrics
-./generate_build_metrics_summary.sh
-
-# Check cache usage
-docker system df
-```
-
-### Cache Management
-
-```bash
-# Check cache effectiveness
-./cache-helper.sh inspect pak
-
-# Clean local cache
-./cache-helper.sh clean
-
-# Warm cache for faster builds
-./cache-helper.sh warm-all
-```
-
-## Documentation
-
-### Core Documentation
-
-- **[README-pak.md](README-pak.md)**: Detailed pak implementation guide
-- **[CACHING.md](CACHING.md)**: Cache management and optimization
-- **[BUILD_METRICS_README.md](BUILD_METRICS_README.md)**: Build performance tracking
-- **[PHASE4_TESTING_README.md](PHASE4_TESTING_README.md)**: Testing framework
-- **[PHASE5_INTEGRATION_README.md](PHASE5_INTEGRATION_README.md)**: Integration guide
-
-### Troubleshooting and Optimization
-
-- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**: Common issues and solutions
-- **[CACHE_OPTIMIZATION.md](CACHE_OPTIMIZATION.md)**: Advanced cache strategies
-- **[PERFORMANCE_GUIDE.md](PERFORMANCE_GUIDE.md)**: Performance tuning guide
 
 ## Using the Container with an Agentic Coding Tool
 
@@ -279,6 +196,7 @@ If you prefer not to build a custom image, you can install Q CLI on container st
 
 **Note:** Option 1 is recommended as it pre-installs Q CLI during image build, making container startup much faster. Option 2 reinstalls Q CLI every time the container starts.
 
+
 ### User model
 
 As an aesthetic preference, the container contains a non-root user named "me". To retain this design choice while ensuring compatibility with VS Code, the following adjustments are made:
@@ -286,6 +204,7 @@ As an aesthetic preference, the container contains a non-root user named "me". T
 - The image retains the default 'vscode' user required by Dev Containers/VS Code but also creates a 'me' user and 'me' group that share the same UID/GID as 'vscode'.
 - Both users have the same home directory: /home/me (the previous /home/vscode is renamed).
 - This design ensures compatibility with VS Code while making file listings show owner and group as 'me'.
+
 
 ## Research containers with tmux
 
@@ -341,25 +260,66 @@ If you use VS Code to create the container, add the following to your `.devconta
 
 **Limitations:** Reboots terminate all processes. Container auto-restarts but jobs must be resumed manually. Use checkpointing for critical work.
 
-## Migration from Traditional System
 
-### Key Improvements
+## Technical Implementation Details
 
-| Aspect | Traditional | pak-based |
-|--------|-------------|-----------||
-| **Build Time** | 35-45 min | 15-25 min (with cache) |
-| **Package Management** | Multiple systems | Unified pak interface |
-| **Error Handling** | Manual intervention | Automatic retry |
-| **GitHub Packages** | Manual API calls | Native integration |
-| **Caching** | Limited | Comprehensive BuildKit + pak |
-| **Multi-arch** | Complex setup | Native support |
+### Architecture
 
-### Compatibility
+The container uses a multi-stage build process with BuildKit caching for optimal performance:
 
-- **Library Paths**: Maintained compatibility with existing R code
-- **Package Versions**: Consistent with CRAN latest versions  
-- **Container Interface**: Identical user experience
-- **Development Workflow**: No changes required
+- **Base Stage**: Ubuntu 24.04 with essential system packages
+- **Development Tools**: Neovim, VS Code Server, Git, shell utilities  
+- **Document Preparation**: LaTeX, Pandoc, Haskell (for pandoc-crossref)
+- **R Environment**: R 4.5+ with comprehensive packages via pak
+- **Python Environment**: Python 3.12+ with data science packages
+
+### R Package Management
+
+The container uses [pak](https://pak.r-lib.org/) for R package management, providing:
+
+- **Better Dependency Resolution**: Handles complex dependency graphs more reliably
+- **Faster Installation**: Parallel downloads and compilation
+- **Caching**: BuildKit cache mounts for faster rebuilds
+
+#### Cache Usage Examples
+```bash
+# Build with local cache only (default)
+./build-container.sh --full
+
+# Build using registry cache
+./build-container.sh --full --cache-from ghcr.io/jbearak/base-container
+
+# Build and update registry cache
+./build-container.sh --full --cache-from-to ghcr.io/jbearak/base-container
+
+# Build without cache (clean build)
+./build-container.sh --full --no-cache
+
+# Clean local cache
+./cache-helper.sh clean
+```
+
+#### Available Build Targets
+- `base` - Ubuntu base with system packages
+- `base-nvim` - Base + Neovim
+- `base-nvim-vscode` - Base + Neovim + VS Code Server
+- `base-nvim-vscode-tex` - Base + Neovim + VS Code + LaTeX
+- `base-nvim-vscode-tex-pandoc` - Base + Neovim + VS Code + LaTeX + Pandoc
+- `base-nvim-vscode-tex-pandoc-haskell` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell
+- `base-nvim-vscode-tex-pandoc-haskell-crossref` - Base + Neovim + VS Code + LaTeX + Pandoc + Haskell + pandoc-crossref
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus` - Base + additional tools
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r` - Base + R with comprehensive packages via pak
+- `base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py` - Base + R + Python
+- `full` - Complete development environment (default)
+
+### User Model
+
+The container uses a non-root user named "me" for security and compatibility:
+
+- Compatible with VS Code Dev Containers (shares UID/GID with 'vscode' user)
+- Home directory: `/home/me`
+- Proper file permissions for mounted volumes
+
 
 ## Troubleshooting
 
@@ -378,12 +338,6 @@ docker system df
 # Check pak cache (if container exists)
 docker run --rm base-container:pak R -e 'pak::cache_summary()' 2>/dev/null || echo "Container not built yet"
 ```
-
-### Common Issues
-
-- **Build failures**: Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- **Performance issues**: See [PERFORMANCE_GUIDE.md](PERFORMANCE_GUIDE.md)
-- **Cache problems**: Review [CACHE_OPTIMIZATION.md](CACHE_OPTIMIZATION.md)
 
 ## License
 

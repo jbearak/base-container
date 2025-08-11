@@ -9,3 +9,18 @@ renv.lock
 /crossref_test.md
 /crossref_test.pdf
 /build
+phase6_integration_results/
+phase6_r_test_results/
+phase6_existing_test_results/
+test_results/
+regression_test_results/
+phase4_test_results/
+package_validation_results/
+build_performance_results/
+
+# Test result directories (added during cleanup)
+*_test_results/
+*_performance_results/
+*_validation_results/
+build/
+.tmp/

@@ -1239,15 +1239,16 @@ RUN apt-get update -qq && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# R package installation
+# R package installation with pak and BuildKit cache mounts
 # ---------------------------------------------------------------------------
-# Copy the package list and install all specified CRAN packages.
-# The install_packages.R script handles dependency resolution, parallel
-# compilation, and error reporting.
+# Phase 1 of pak transformation: Set up foundation with BuildKit cache mounts
+# and pak installation. This provides the infrastructure for faster builds
+# and better package management.
 # 
-# Note: We switch back to root to install packages to the system library,
-# then fix permissions afterwards. This avoids permission issues while
-# ensuring packages are available system-wide.
+# Key improvements:
+#   - BuildKit cache mounts for pak cache, compilation cache, and downloads
+#   - Architecture-segregated site libraries for multi-arch support
+#   - pak installation for better dependency resolution and GitHub integration
 # ---------------------------------------------------------------------------
 # Switch back to root for package installation
 USER root
@@ -1255,13 +1256,68 @@ USER root
 # Accept debug flag from build args
 ARG DEBUG_PACKAGES=false
 
+# Set up architecture-segregated site library paths
+RUN set -e; \
+    # Detect R version and architecture for segregated libraries
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    TARGETARCH=$(dpkg --print-architecture); \
+    echo "Setting up R library for R ${R_MM} on ${TARGETARCH}"; \
+    # Create architecture-specific site library directory
+    SITE_LIB_DIR="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
+    mkdir -p "$SITE_LIB_DIR"; \
+    # Create compatibility symlink for current architecture
+    ln -sf "$SITE_LIB_DIR" "/opt/R/site-library/current"; \
+    # Update R site library configuration
+    echo "R_LIBS_SITE=\"$SITE_LIB_DIR\"" >> /etc/environment; \
+    echo "R library path configured: $SITE_LIB_DIR"; \
+    # Create compatibility symlink from standard R location
+    ln -sf "$SITE_LIB_DIR" "/usr/local/lib/R/site-library"; \
+    echo "✅ R site library segregation configured with compatibility symlink"
+
+# Install pak with BuildKit cache mounts for optimal performance
+RUN --mount=type=cache,target=/root/.cache/R/pak \
+    --mount=type=cache,target=/tmp/R-pkg-cache \
+    --mount=type=cache,target=/tmp/downloaded_packages \
+    set -e; \
+    echo "Installing pak package manager..."; \
+    # Set up environment for R package installation
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    TARGETARCH=$(dpkg --print-architecture); \
+    export R_LIBS_SITE="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
+    export R_COMPILE_PKGS=1; \
+    export R_KEEP_PKG_SOURCE=yes; \
+    export TMPDIR=/tmp/R-pkg-cache; \
+    echo "R package installation environment configured"; \
+    # Install pak from CRAN
+    R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
+    # Verify pak installation
+    R -e "library(pak); cat('pak version:', as.character(packageVersion('pak')), '\n')"; \
+    echo "✅ pak installed successfully"
+
 COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/packages.txt
 
-# Install all R packages listed in R_packages.txt
-# This step can take well over an hour.
-# Failed packages will be printed directly at the end of the installation
-RUN chmod +x /tmp/install_r_packages.sh && \
+# Install all R packages with BuildKit cache mounts for faster builds
+# Cache mounts provide significant build time improvements:
+#   - pak cache: Avoids re-downloading package metadata
+#   - compilation cache: Reuses compiled objects across builds  
+#   - downloaded packages: Caches source packages and binaries
+RUN --mount=type=cache,target=/root/.cache/R/pak \
+    --mount=type=cache,target=/tmp/R-pkg-cache \
+    --mount=type=cache,target=/tmp/downloaded_packages \
+    chmod +x /tmp/install_r_packages.sh && \
+    # Set up environment for R package installation
+    # NOTE: Environment setup is duplicated from pak installation RUN command above
+    # because Docker doesn't persist exported variables between separate RUN commands
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    TARGETARCH=$(dpkg --print-architecture); \
+    export R_LIBS_SITE="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
+    export R_COMPILE_PKGS=1; \
+    export R_KEEP_PKG_SOURCE=yes; \
+    export TMPDIR=/tmp/R-pkg-cache; \
     if [ "$DEBUG_PACKAGES" = "true" ]; then \
         /tmp/install_r_packages.sh --debug; \
     else \
