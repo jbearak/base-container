@@ -1270,7 +1270,10 @@ RUN set -e; \
     ln -sf "$SITE_LIB_DIR" "/opt/R/site-library/current"; \
     # Update R site library configuration
     echo "R_LIBS_SITE=\"$SITE_LIB_DIR\"" >> /etc/environment; \
-    echo "R library path configured: $SITE_LIB_DIR"
+    echo "R library path configured: $SITE_LIB_DIR"; \
+    # Create compatibility symlink from standard R location
+    ln -sf "$SITE_LIB_DIR" "/usr/local/lib/R/site-library"; \
+    echo "✅ R site library segregation configured with compatibility symlink"
 
 # Install pak with BuildKit cache mounts for optimal performance
 RUN --mount=type=cache,target=/root/.cache/R/pak \
@@ -1278,6 +1281,15 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     --mount=type=cache,target=/tmp/downloaded_packages \
     set -e; \
     echo "Installing pak package manager..."; \
+    # Set up environment for R package installation
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    TARGETARCH=$(dpkg --print-architecture); \
+    export R_LIBS_SITE="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
+    export R_COMPILE_PKGS=1; \
+    export R_KEEP_PKG_SOURCE=yes; \
+    export TMPDIR=/tmp/R-pkg-cache; \
+    echo "R package installation environment configured"; \
     # Install pak from CRAN
     R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
     # Verify pak installation
@@ -1296,6 +1308,14 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     --mount=type=cache,target=/tmp/R-pkg-cache \
     --mount=type=cache,target=/tmp/downloaded_packages \
     chmod +x /tmp/install_r_packages.sh && \
+    # Set up environment for R package installation
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    TARGETARCH=$(dpkg --print-architecture); \
+    export R_LIBS_SITE="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
+    export R_COMPILE_PKGS=1; \
+    export R_KEEP_PKG_SOURCE=yes; \
+    export TMPDIR=/tmp/R-pkg-cache; \
     if [ "$DEBUG_PACKAGES" = "true" ]; then \
         /tmp/install_r_packages.sh --debug; \
     else \
