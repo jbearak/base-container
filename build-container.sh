@@ -238,11 +238,19 @@ else
 fi
 
 # Use docker buildx for better caching support
+# Image reference and metadata file path
+IMAGE_REF="${CONTAINER_NAME}:${IMAGE_TAG}"
+METADATA_FILE="build/build_metadata.json"
+mkdir -p "$(dirname "$METADATA_FILE")"
+
+# Build the image with BuildKit metadata for compressed size, and load locally
 if docker buildx build ${NO_CACHE} ${DEBUG_MODE} ${TARGET_CACHE_MODE} \
   --progress=plain \
   --target "${BUILD_TARGET}" \
   --build-arg BUILDKIT_INLINE_CACHE=1 \
-  -t "${CONTAINER_NAME}:${IMAGE_TAG}" \
+  --metadata-file "${METADATA_FILE}" \
+  --load \
+  -t "${IMAGE_REF}" \
   .; then
   echo "✅ Container built successfully!"
 else
@@ -250,6 +258,46 @@ else
   echo
   echo "❌ Container build failed!"
   exit $build_exit_code
+fi
+
+# Helper to render bytes to human size without requiring numfmt
+human_size() {
+  local my_bytes="$1"
+  awk -v b="$my_bytes" '
+    function human(x){
+      split("B K M G T P", u, " ")
+      i=1
+      while (x>=1024 && i<6){ x/=1024; i++ }
+      if (x>=100) printf("%.0f%s\n", x, u[i]);
+      else if (x>=10) printf("%.1f%s\n", x, u[i]);
+      else printf("%.2f%s\n", x, u[i]);
+    } BEGIN { human(b) }'
+}
+
+# Print compressed (push) size from BuildKit metadata if available
+if command -v jq >/dev/null 2>&1 && [ -s "${METADATA_FILE}" ]; then
+  compressed_bytes=$(jq -r '."containerimage.descriptor".size // empty' "${METADATA_FILE}" || true)
+  if [ -n "${compressed_bytes}" ] && [ "${compressed_bytes}" != "null" ]; then
+    echo "📦 Compressed (push) size: $(human_size "${compressed_bytes}")"
+  else
+    echo "📦 Compressed (push) size: unavailable (no descriptor in metadata)"
+  fi
+else
+  echo "📦 Compressed (push) size: unavailable (metadata file missing or jq not installed)"
+fi
+
+# Print uncompressed local image size
+uncompressed_bytes=$(docker image inspect "${IMAGE_REF}" --format '{{.Size}}' 2>/dev/null || true)
+if [ -n "${uncompressed_bytes}" ]; then
+  echo "🗜️  Uncompressed (local) size: $(human_size "${uncompressed_bytes}")"
+else
+  echo "🗜️  Uncompressed (local) size: unavailable"
+fi
+
+# Show recent layer sizes/commands for quick feedback
+if docker history --no-trunc "${IMAGE_REF}" >/dev/null 2>&1; then
+  echo "📚 Layer history (most recent first):"
+  docker history --no-trunc "${IMAGE_REF}" | sed -n '1,15p'
 fi
 
 # Optionally test the container
