@@ -98,6 +98,25 @@ init_master_testing() {
 }
 
 # Configure test parameters based on test level
+#
+# TEST LEVEL CONFIGURATION MATRIX:
+# ┌─────────────────────────────┬─────────┬──────────┬──────────────┐
+# │ Test Component              │ Quick   │ Standard │ Comprehensive│
+# ├─────────────────────────────┼─────────┼──────────┼──────────────┤
+# │ Core Functionality          │ ✓       │ ✓        │ ✓            │
+# │ Package Validation          │ ✓ (20)  │ ✓ (50)   │ ✓ (100)      │
+# │ Regression Testing          │ ✓ (10)  │ ✓ (20)   │ ✓ (50)       │
+# │ Build Performance Tests     │ ✗       │ ✓        │ ✓            │
+# │ Stress Testing              │ ✗       │ ✗        │ ✓            │
+# │ Multi-architecture Tests    │ ✗       │ ✗        │ ✓            │
+# │ Deep Package Validation     │ ✗       │ ✗        │ ✓            │
+# │ Cache Performance Analysis  │ ✗       │ ✓        │ ✓            │
+# │ Estimated Runtime           │ ~2 min  │ ~10 min  │ ~30+ min     │
+# └─────────────────────────────┴─────────┴──────────┴──────────────┘
+#
+# Numbers in parentheses indicate sample sizes for testing.
+# ✓ = Enabled, ✗ = Disabled
+#
 configure_test_level() {
     case "$TEST_LEVEL" in
         quick)
