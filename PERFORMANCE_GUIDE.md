@@ -49,7 +49,7 @@ time docker buildx build \
 ### Key Performance Indicators
 
 | Metric | Target | Measurement Method |
-|--------|--------|--------------------|
+|--------|--------|--------------------||
 | Cold Build Time | <45 minutes | Full build without cache |
 | Warm Build Time | <20 minutes | Build with local cache |
 | Cache Hit Rate | >80% | BuildKit cache analysis |
@@ -100,39 +100,17 @@ docker buildx build --progress=plain --file Dockerfile.pak . 2>&1 | grep -i cach
 
 ### 2. Resource Allocation Optimization
 
-#### Docker Resource Configuration
+#### Colima Configuration for macOS
 
 ```bash
-# Optimal Docker Desktop settings for macOS/Windows
-# Memory: 8GB minimum, 16GB recommended
+# Optimal Colima settings for macOS
+# Memory: 8GB minimum, 32GB recommended
 # CPU: 4 cores minimum, 8 cores recommended
 # Disk: 100GB minimum for cache storage
 
-# Linux Docker daemon configuration
-echo '{
-  "default-runtime": "runc",
-  "runtimes": {
-    "runc": {
-      "path": "runc"
-    }
-  },
-  "storage-driver": "overlay2",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true"
-  ],
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  },
-  "default-ulimits": {
-    "nofile": {
-      "Name": "nofile",
-      "Hard": 64000,
-      "Soft": 64000
-    }
-  }
-}' | sudo tee /etc/docker/daemon.json
+colima stop
+colima delete
+colima start --vm-type vz --mount-type virtiofs --cpu 8 --memory 32
 ```
 
 #### Build Resource Optimization
@@ -444,15 +422,15 @@ suppressPackageStartupMessages({
 })
 ```
 
-#### System-Level Optimization
+#### System-Level Optimization for macOS
 
 ```bash
-# Optimize Docker for R workloads
-echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
-echo 'vm.vfs_cache_pressure=50' | sudo tee -a /etc/sysctl.conf
+# Optimize Colima for R workloads
+colima stop
+colima start --vm-type vz --mount-type virtiofs --cpu 8 --memory 32 --disk 100
 
-# Optimize file system for container workloads
-mount -o remount,noatime /var/lib/docker
+# Verify optimal settings
+colima status
 ```
 
 ## Troubleshooting Performance Issues
@@ -516,4 +494,4 @@ system.time(download.file("https://cran.r-project.org/src/contrib/dplyr_1.1.0.ta
 - Update optimization strategies
 - Share performance insights with team
 
-This performance guide provides comprehensive strategies for optimizing and monitoring the pak-based R package installation system to achieve maximum performance benefits.
+This performance guide provides comprehensive strategies for optimizing and monitoring the pak-based R package installation system to achieve maximum performance benefits on macOS with Colima.
