@@ -279,7 +279,6 @@ The container uses [pak](https://pak.r-lib.org/) for R package management, provi
 
 - **Better Dependency Resolution**: Handles complex dependency graphs more reliably
 - **Faster Installation**: Parallel downloads and compilation
-- **GitHub Integration**: Native support for GitHub packages
 - **Caching**: BuildKit cache mounts for faster rebuilds
 
 #### Cache Usage Examples
