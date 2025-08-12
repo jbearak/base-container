@@ -287,7 +287,7 @@ cat('📦 Building btw...\\n')
 flush.console()
 tryCatch({
     start_time <- Sys.time()
-    pak::pkg_install('Guttmacher/btw')
+    pak::pkg_install('posit-dev/btw')
     end_time <- Sys.time()
     duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
     cat('✅ Built btw in', duration, 'seconds\\n')
