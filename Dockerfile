@@ -50,7 +50,7 @@
 # ---------------------------------------------------------------------------
 
 # ===========================================================================
-# STAGE 1: BASE SYSTEM
+# STAGE 1: BASE SYSTEM (base)
 # ===========================================================================
 # This stage installs Ubuntu packages and copies user configuration files 
 # (dotfiles). R installation, CmdStan, and JAGS have been moved to stage 9
@@ -58,10 +58,6 @@
 # ---------------------------------------------------------------------------
 
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS base
-
-# ---------------------------------------------------------------------------
-# STAGE 1: BASE SYSTEM - Started at build time
-# ---------------------------------------------------------------------------
 # Container metadata labels
 # ---------------------------------------------------------------------------
 # These labels provide metadata about the container image and link it to
@@ -620,13 +616,8 @@ USER root
 
 FROM base AS base-nvim
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-
 # Switch to the 'me' user for nvim plugin installation
 USER me
-
-# ---------------------------------------------------------------------------
 # Neovim plugin installation using lazy.nvim
 # ---------------------------------------------------------------------------
 # Run nvim in headless mode to trigger lazy.nvim's automatic plugin
@@ -646,7 +637,8 @@ USER root
     echo "" && \
 
 # ===========================================================================
-# STAGE 3: LATEX TYPESETTING SUPPORT                (base-nvim-tex)
+# ===========================================================================
+# STAGE 3: LATEX TYPESETTING SUPPORT (base-nvim-tex)
 # ===========================================================================
 # This stage adds LaTeX tools, which we need for typesetting papers. 
 # ---------------------------------------------------------------------------
@@ -654,10 +646,8 @@ USER root
 FROM base-nvim AS base-nvim-tex
 
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 # This doesn't install the full TeX Live distribution, to keep the image
-# size down, though this is contributes a lot to the final image size.
+# size down, though this contributes a lot to the final image size.
 # ---------------------------------------------------------------------------
 RUN set -e; \
     apt-get update -qq && \
@@ -707,9 +697,6 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-tex AS base-nvim-tex-pandoc
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Pandoc installation
@@ -784,9 +771,6 @@ RUN set -e; \
 FROM base-nvim-tex-pandoc AS base-nvim-tex-pandoc-haskell
 
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # Haskell Stack installation
 # ---------------------------------------------------------------------------
 RUN set -e; \
@@ -846,9 +830,6 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-tex-pandoc-haskell AS base-nvim-tex-pandoc-haskell-crossref
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Install pandoc-crossref from GitHub releases or build from source
@@ -925,16 +906,13 @@ RUN set -e; \
     echo "" && \
 
 # ===========================================================================
-# STAGE 7: MISC (whatever came up in debugging)           (base-nvim-tex-pandoc-plus)
+# STAGE 7: ADDITIONAL LATEX PACKAGES (base-nvim-tex-pandoc-haskell-crossref-plus)
 # ===========================================================================
-# Builds on the Pandoc stage but installs extra LaTeX packages with tlmgr.
-# Useful to iterate quickly on TeX deps without re-building Pandoc.
+# Builds on the pandoc-crossref stage but installs extra LaTeX packages.
+# Useful to iterate quickly on TeX deps without re-building pandoc-crossref.
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-tex-pandoc-haskell-crossref AS base-nvim-tex-pandoc-haskell-crossref-plus
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 
 # Install additional LaTeX packages (as root for system-level installation)
 RUN set -e; \
@@ -998,13 +976,8 @@ USER root
 
 FROM base-nvim-tex-pandoc-haskell-crossref-plus AS base-nvim-tex-pandoc-haskell-crossref-plus-py
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-
 # Switch to root for system package installation
 USER root
-
-# ---------------------------------------------------------------------------
 # Python 3.13 installation using deadsnakes PPA
 # ---------------------------------------------------------------------------
 # The deadsnakes PPA provides the latest Python versions for Ubuntu.
@@ -1049,9 +1022,6 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 
 # Switch to root for system package installation
 USER root
@@ -1170,9 +1140,6 @@ USER me
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak
 
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # System package updates
 # ---------------------------------------------------------------------------
 # Update all system packages to latest versions for security and bug fixes
@@ -1282,10 +1249,8 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
 
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-
 # Switch to the 'me' user for VS Code server installation
+USER me
 USER me
 
 # ---------------------------------------------------------------------------
@@ -1349,8 +1314,6 @@ USER root
 
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 USER root
 
 # Copy and apply shell configuration
