@@ -1162,8 +1162,11 @@ RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         software-properties-common \
         dirmngr \
-        jags && \
+        jags \
+        python3-apt && \
+    # Add CRAN repository key
     wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
+    # Add CRAN repository
     add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" && \
     apt-get update -qq && \
     apt-get install -y --no-install-recommends \
