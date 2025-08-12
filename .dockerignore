@@ -1,0 +1,34 @@
+# Git and version control
+.git
+.github/
+.gitignore
+
+# Documentation
+*.md
+docs/
+README.md
+CLAUDE.md
+
+# IDE and editor files
+.vscode/
+.amazonq/
+.devcontainer/
+
+# Build artifacts and logs
+build/
+*.log
+*.tmp
+
+# Cache directories
+.cache/
+node_modules/
+
+# Keep essential files for build
+!Dockerfile
+!Dockerfile.*
+!scripts/
+!config/
+!dotfiles/
+!*.sh
+!*.txt
+!LICENSE.txt
