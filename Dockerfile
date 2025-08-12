@@ -5,7 +5,7 @@
 #             VS Code and the Dev Containers extension.  This Dockerfile uses
 #             a multi-stage approach for debugging:
 #
-#             Stage 1 (base)               : Setup Ubuntu with tools we can install via apt.
+#             Stage 1 (base)               : Setup Ubuntu with basic tools (R components moved to stage 10).
 #             Stage 2 (base-nvim)          : Initialize and bootstrap Neovim plugins using lazy.nvim.
 #             Stage 3 (base-nvim-vscode)   : Setup VS Code server with pre-installed extensions.
 #             Stage 4 (base-nvim-vscode-tex): Add LaTeX tools for typesetting.
@@ -13,9 +13,10 @@
 #             Stage 6 (base-nvim-vscode-tex-pandoc-haskell): Compile Haskell to compile pandoc-crossref.
 #             Stage 7 (base-nvim-vscode-tex-pandoc-haskell-crossref): Add pandoc-crossref for numbering figures, equations, tables.
 #             Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus): Add extra LaTeX packages via tlmgr (e.g. soul)
-#             Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r): Install a comprehensive suite of R packages.
-#             Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py): Add Python 3.13 using deadsnakes PPA.
-#             Stage 11 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
+#             Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py): Add Python 3.13 using deadsnakes PPA.
+#             Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r): Install R, CmdStan, and JAGS.
+#             Stage 11 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak): Install a comprehensive suite of R packages.
+#             Stage 12 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
 #
 # Build Metrics: Each stage tracks timing and size information:
 #   • Start/end timestamps for build duration calculation
@@ -40,11 +41,11 @@
 # ---------------------------------------------------------------------------
 
 # ===========================================================================
-# STAGE 1: BASE SYSTEM WITH R
+# STAGE 1: BASE SYSTEM (R COMPONENTS MOVED TO STAGE 10)
 # ===========================================================================
-# This stage installs Ubuntu packages, adds the CRAN repository, installs R,
-# and copies user configuration files (dotfiles).  It does NOT install any
-# R packages, making it suitable for quick system-level testing.
+# This stage installs Ubuntu packages and copies user configuration files 
+# (dotfiles). R installation, CmdStan, and JAGS have been moved to stage 10
+# for better build caching and separation of concerns.
 # ---------------------------------------------------------------------------
 
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS base
@@ -91,7 +92,6 @@ ARG DEBIAN_FRONTEND=noninteractive
 #   locales                    : For setting UTF-8 locale
 #   neovim                     : Terminal-based editor (user preference)
 #   ripgrep                    : Fast text search tool (rg command)
-#   jags                       : MCMC sampler used by R packages like rjags
 #   npm                        : Node.js package manager (for VS Code extensions)
 #   tmux                       : Terminal multiplexer
 #   zsh                        : User's preferred shell
@@ -117,7 +117,6 @@ RUN apt-get update -qq && apt-get -y upgrade && \
         curl \
         unzip \
         ripgrep \
-        jags \
         npm \
         tmux \
         zsh \
@@ -463,75 +462,6 @@ RUN set -e; \
     echo "✅ Zsh plugins installed"
 
 # ---------------------------------------------------------------------------
-# R installation from CRAN
-# ---------------------------------------------------------------------------
-# Ubuntu's default R version is often outdated. We add the official CRAN
-# repository to get the latest stable R release (currently 4.5.1).
-#
-# Steps:
-#   1. Install prerequisite packages (some redundant with above, but safe)
-#   2. Download and add CRAN's GPG signing key to verify packages
-#   3. Add CRAN repository URL to APT sources
-#   4. Update package lists to include CRAN packages
-#   5. Install r-base (R interpreter) and r-base-dev (headers for compiling)
-# ---------------------------------------------------------------------------
-RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends \
-        software-properties-common \
-        dirmngr && \
-    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
-    add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" && \
-    apt-get update -qq && \
-    apt-get install -y --no-install-recommends \
-        r-base \
-        r-base-dev && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-
-# ---------------------------------------------------------------------------
-# CmdStan installation
-# ---------------------------------------------------------------------------
-# Install CmdStan (command-line interface to Stan) which is required for
-# the rstan R package to work properly. CmdStan provides the Stan compiler
-# and runtime that rstan uses behind the scenes.
-# ---------------------------------------------------------------------------
-RUN set -e; \
-    echo "Installing CmdStan..."; \
-    # Create directory for CmdStan
-    mkdir -p /opt/cmdstan; \
-    cd /opt/cmdstan; \
-    # Get the latest CmdStan release info from GitHub API
-    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/stan-dev/cmdstan/releases/latest); \
-    CMDSTAN_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
-    # Remove 'v' prefix from version for filename (e.g., v2.36.0 -> 2.36.0)
-    CMDSTAN_VERSION_CLEAN=$(echo "$CMDSTAN_VERSION" | sed 's/^v//'); \
-    echo "Installing CmdStan version: ${CMDSTAN_VERSION} (filename version: ${CMDSTAN_VERSION_CLEAN})"; \
-    # Construct URL for tarball (CmdStan uses version without 'v' prefix in filename)
-    CMDSTAN_URL="https://github.com/stan-dev/cmdstan/releases/download/${CMDSTAN_VERSION}/cmdstan-${CMDSTAN_VERSION_CLEAN}.tar.gz"; \
-    echo "Downloading CmdStan tarball from: ${CMDSTAN_URL}"; \
-    # Download tarball (CmdStan doesn't provide checksums, so we generate SHA256 for transparency)
-    curl -fsSL "$CMDSTAN_URL" -o cmdstan.tar.gz; \
-    # Generate and display SHA256 sum for verification/transparency
-    echo "Generating SHA256 sum for verification:"; \
-    CMDSTAN_SHA256=$(sha256sum cmdstan.tar.gz | cut -d' ' -f1); \
-    echo "SHA256: ${CMDSTAN_SHA256}"; \
-    echo "✅ CmdStan ${CMDSTAN_VERSION} downloaded successfully"; \
-    # Extract the tarball
-    tar -xzf cmdstan.tar.gz --strip-components=1; \
-    rm cmdstan.tar.gz; \
-    # Build CmdStan (this compiles the Stan compiler and math library)
-    echo "Building CmdStan (this may take several minutes)..."; \
-    make build -j$(nproc); \
-    # Set environment variable for CmdStan path
-    echo "export CMDSTAN=/opt/cmdstan" >> /etc/environment; \
-    # Verify installation
-    echo "CmdStan installed successfully at /opt/cmdstan"; \
-    ls -la /opt/cmdstan/bin/
-
-# Set CmdStan environment variable for current build
-ENV CMDSTAN=/opt/cmdstan
-
-# ---------------------------------------------------------------------------
 # Locale configuration
 # ---------------------------------------------------------------------------
 # Set UTF-8 locale to avoid character encoding issues in R and shell
@@ -637,28 +567,6 @@ RUN chown -R me:me /home/me/.tmux.conf \
                       /home/me/.Rprofile \
                       /home/me/.lintr \
                       /home/me/.config
-
-# ---------------------------------------------------------------------------
-# R compilation optimization
-# ---------------------------------------------------------------------------
-# Create ~/.R/Makevars to optimize R package compilation:
-#   - Use all available CPU cores (parallel compilation)
-#   - Enable compiler piping for faster builds
-#   - Set optimization flags for better performance
-#
-# Why this matters: Installing R packages from source (the default on Linux)
-# can be very slow without these optimizations. This configuration can speed
-# up package installation by 2-4x on multi-core machines.
-# ---------------------------------------------------------------------------
-RUN mkdir -p /home/me/.R && \
-    echo 'MAKEFLAGS = -j$(nproc)' > /home/me/.R/Makevars && \
-    echo 'CXX = g++ -pipe' >> /home/me/.R/Makevars && \
-    echo 'CC = gcc -pipe' >> /home/me/.R/Makevars && \
-    echo 'CXX11 = g++ -pipe' >> /home/me/.R/Makevars && \
-    echo 'CXX14 = g++ -pipe' >> /home/me/.R/Makevars && \
-    echo 'CXX17 = g++ -pipe' >> /home/me/.R/Makevars && \
-    echo 'CXXFLAGS = -g -O2 -fPIC -pipe' >> /home/me/.R/Makevars && \
-    chown -R me:me /home/me/.R
 
 # ---------------------------------------------------------------------------
 # Node.js and Go development tools installation
@@ -1073,6 +981,7 @@ RUN mkdir -p /tmp/build-metrics && \
 # ---------------------------------------------------------------------------
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
+    echo "🔍 DEBUG: Detected architecture: $ARCH"; \
     case "$ARCH" in \
       amd64) \
         echo "Installing pandoc-crossref from pre-built binary for amd64..."; \
@@ -1097,23 +1006,32 @@ RUN set -e; \
         rm /tmp/pandoc-crossref.tar.xz; \
         ;; \
       arm64) \
-        echo "Building pandoc-crossref from source for arm64 (no pre-built Linux binary available)..."; \
-        # Get the latest release tag for pandoc-crossref
-        LATEST_TAG=$(curl -s https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
-        echo "Building pandoc-crossref version: ${LATEST_TAG}"; \
-        # Clone the specific release tag
-        cd /tmp; \
-        git clone --depth 1 --branch "${LATEST_TAG}" https://github.com/lierdakil/pandoc-crossref.git; \
-        cd pandoc-crossref; \
-        # Build with stack (this will take several minutes)
+        echo "Building pandoc-crossref from source for ARM64..."; \
+        # Install additional build dependencies for pandoc-crossref
+        apt-get update -qq && \
+        apt-get install -y --no-install-recommends \
+            zlib1g-dev \
+            libtinfo-dev \
+            libgmp-dev && \
+        # Get the latest pandoc-crossref version from GitHub
+        RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest); \
+        CROSSREF_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+        echo "Building pandoc-crossref version: ${CROSSREF_VERSION}"; \
+        # Clone the pandoc-crossref repository at the specific version
+        git clone --depth 1 --branch "${CROSSREF_VERSION}" https://github.com/lierdakil/pandoc-crossref.git /tmp/pandoc-crossref; \
+        cd /tmp/pandoc-crossref; \
+        # Build using Stack (this will take a while on ARM64)
+        echo "Starting Stack build (this may take 20-30 minutes on ARM64)..."; \
         stack setup; \
-        stack build; \
-        # Install the binary
-        stack install --local-bin-path /usr/local/bin; \
-        # Cleanup build artifacts to reduce image size
+        stack build --copy-bins --local-bin-path /usr/local/bin; \
+        # Verify the binary was built and installed
+        ls -la /usr/local/bin/pandoc-crossref; \
+        chmod +x /usr/local/bin/pandoc-crossref; \
+        # Clean up build directory and apt cache
         cd /; \
         rm -rf /tmp/pandoc-crossref; \
-        rm -rf /root/.stack; \
+        apt-get clean && rm -rf /var/lib/apt/lists/*; \
+        echo "✅ pandoc-crossref built from source for ARM64"; \
         ;; \
       *) \
         echo "Unsupported architecture for pandoc-crossref: $ARCH"; \
@@ -1125,7 +1043,8 @@ RUN set -e; \
     PANDOC_VERSION=$(pandoc --version | head -n 1 | sed 's/pandoc //'); \
     echo "Installed pandoc-crossref for Pandoc version: ${PANDOC_VERSION}"; \
     # Verify installation
-    pandoc-crossref --version
+        echo "Verifying pandoc-crossref build..."; \
+        pandoc-crossref --version; \
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 7 End
@@ -1212,21 +1131,204 @@ RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print su
     echo "Size change: $(cat /tmp/build-metrics/stage-8-size-start.txt) -> $(cat /tmp/build-metrics/stage-8-size-end.txt)"
 
 # ===========================================================================
-# STAGE 9: FULL R DEVELOPMENT ENVIRONMENT          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r)
+# STAGE 9: PYTHON 3.13 INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py)
 # ===========================================================================
-# This stage installs all R packages specified in R_packages.txt.
+# This stage adds Python 3.13 using the deadsnakes PPA for the latest Python version.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 9 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r,start,$(date +%s)" > /tmp/build-metrics/stage-9-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r.csv && \
-    echo "Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py,start,$(date +%s)" > /tmp/build-metrics/stage-9-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py.csv && \
+    echo "Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-9-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-9-size-start.txt)"
+
+# Switch to root for system package installation
+USER root
+
+# ---------------------------------------------------------------------------
+# Python 3.13 installation using deadsnakes PPA
+# ---------------------------------------------------------------------------
+# The deadsnakes PPA provides the latest Python versions for Ubuntu.
+# We install Python 3.13 and let it manage the pip installation.
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Adding deadsnakes PPA for Python 3.13..."; \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update -qq && \
+    echo "Installing Python 3.13..."; \
+    apt-get install -y --no-install-recommends \
+        python3.13 \
+        python3.13-dev \
+        python3.13-venv && \
+    # Update alternatives to make python3.13 the default python3
+    # Note: python3 defaults to the alternative with the highest priority number
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 2 && \
+    # Install pip using Python 3.13's built-in ensurepip (without upgrade to avoid conflicts)
+    python3.13 -m ensurepip && \
+    # Install common development tools
+    python3.13 -m pip install black flake8 mypy isort && \
+    # Verify installation
+    python3 --version && \
+    python3.13 --version && \
+    python3.13 -m pip --version && \
+    echo "✅ Python 3.13 installed successfully" && \
+    # Clean up
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 9 End
+# ---------------------------------------------------------------------------
+RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-9-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py,end,$(date +%s)" >> /tmp/build-metrics/stage-9-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py.csv && \
+    echo "Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-9-size-start.txt) -> $(cat /tmp/build-metrics/stage-9-size-end.txt)"
+
+# ===========================================================================
+# STAGE 10: R INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r)
+# ===========================================================================
+# This stage installs R, CmdStan, and JAGS. R installation has been moved from
+# the base stage to allow for better build caching and separation of concerns.
+# ---------------------------------------------------------------------------
+
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 10 Start
+# ---------------------------------------------------------------------------
+RUN mkdir -p /tmp/build-metrics && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r,start,$(date +%s)" > /tmp/build-metrics/stage-10-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r.csv && \
+    echo "Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r) started at $(date)" && \
+    du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-10-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-10-size-start.txt)"
+
+# Switch to root for system package installation
+USER root
+
+# ---------------------------------------------------------------------------
+# R installation from CRAN
+# ---------------------------------------------------------------------------
+# Ubuntu's default R version is often outdated. We add the official CRAN
+# repository to get the latest stable R release (currently 4.5.1).
+#
+# Steps:
+#   1. Install prerequisite packages (some redundant with above, but safe)
+#   2. Download and add CRAN's GPG signing key to verify packages
+#   3. Add CRAN repository URL to APT sources
+#   4. Update package lists to include CRAN packages
+#   5. Install r-base (R interpreter) and r-base-dev (headers for compiling)
+# ---------------------------------------------------------------------------
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+        dirmngr \
+        jags && \
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
+    add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" && \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        r-base \
+        r-base-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# CmdStan installation
+# ---------------------------------------------------------------------------
+# Install CmdStan (command-line interface to Stan) which is required for
+# the rstan R package to work properly. CmdStan provides the Stan compiler
+# and runtime that rstan uses behind the scenes.
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Installing CmdStan..."; \
+    # Create directory for CmdStan
+    mkdir -p /opt/cmdstan; \
+    cd /opt/cmdstan; \
+    # Get the latest CmdStan release info from GitHub API
+    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/stan-dev/cmdstan/releases/latest); \
+    CMDSTAN_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    # Remove 'v' prefix from version for filename (e.g., v2.36.0 -> 2.36.0)
+    CMDSTAN_VERSION_CLEAN=$(echo "$CMDSTAN_VERSION" | sed 's/^v//'); \
+    echo "Installing CmdStan version: ${CMDSTAN_VERSION} (filename version: ${CMDSTAN_VERSION_CLEAN})"; \
+    # Construct URL for tarball (CmdStan uses version without 'v' prefix in filename)
+    CMDSTAN_URL="https://github.com/stan-dev/cmdstan/releases/download/${CMDSTAN_VERSION}/cmdstan-${CMDSTAN_VERSION_CLEAN}.tar.gz"; \
+    echo "Downloading CmdStan tarball from: ${CMDSTAN_URL}"; \
+    # Download tarball (CmdStan doesn't provide checksums, so we generate SHA256 for transparency)
+    curl -fsSL "$CMDSTAN_URL" -o cmdstan.tar.gz; \
+    # Generate and display SHA256 sum for verification/transparency
+    echo "Generating SHA256 sum for verification:"; \
+    CMDSTAN_SHA256=$(sha256sum cmdstan.tar.gz | cut -d' ' -f1); \
+    echo "SHA256: ${CMDSTAN_SHA256}"; \
+    echo "✅ CmdStan ${CMDSTAN_VERSION} downloaded successfully"; \
+    # Extract the tarball
+    tar -xzf cmdstan.tar.gz --strip-components=1; \
+    rm cmdstan.tar.gz; \
+    # Build CmdStan (this compiles the Stan compiler and math library)
+    echo "Building CmdStan (this may take several minutes)..."; \
+    make build -j$(nproc); \
+    # Set environment variable for CmdStan path
+    echo "export CMDSTAN=/opt/cmdstan" >> /etc/environment; \
+    # Verify installation
+    echo "CmdStan installed successfully at /opt/cmdstan"; \
+    ls -la /opt/cmdstan/bin/
+
+# Set CmdStan environment variable for current build
+ENV CMDSTAN=/opt/cmdstan
+
+# ---------------------------------------------------------------------------
+# R compilation optimization
+# ---------------------------------------------------------------------------
+# Create ~/.R/Makevars to optimize R package compilation:
+#   - Use all available CPU cores (parallel compilation)
+#   - Enable compiler piping for faster builds
+#   - Set optimization flags for better performance
+#
+# Why this matters: Installing R packages from source (the default on Linux)
+# can be very slow without these optimizations. This configuration can speed
+# up package installation by 2-4x on multi-core machines.
+# ---------------------------------------------------------------------------
+RUN mkdir -p /home/me/.R && \
+    echo 'MAKEFLAGS = -j$(nproc)' > /home/me/.R/Makevars && \
+    echo 'CXX = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CC = gcc -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX11 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX14 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX17 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXXFLAGS = -g -O2 -fPIC -pipe' >> /home/me/.R/Makevars && \
+    chown -R me:me /home/me/.R
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 10 End
+# ---------------------------------------------------------------------------
+RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-10-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r,end,$(date +%s)" >> /tmp/build-metrics/stage-10-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r.csv && \
+    echo "Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-10-size-start.txt) -> $(cat /tmp/build-metrics/stage-10-size-end.txt)"
+
+USER me
+
+# ===========================================================================
+# STAGE 11: R PACKAGES INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak)
+# ===========================================================================
+# This stage installs all R packages specified in R_packages.txt.
+# ---------------------------------------------------------------------------
+
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 11 Start
+# ---------------------------------------------------------------------------
+RUN mkdir -p /tmp/build-metrics && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak,start,$(date +%s)" > /tmp/build-metrics/stage-11-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak.csv && \
+    echo "Stage 11 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak) started at $(date)" && \
+    du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-11-size-start.txt)"
 
 # ---------------------------------------------------------------------------
 # System package updates
@@ -1325,94 +1427,31 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     fi
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 9 End
+# Build Metrics: Stage 11 End
 # ---------------------------------------------------------------------------
-RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-9-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r,end,$(date +%s)" >> /tmp/build-metrics/stage-9-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r.csv && \
-    echo "Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r) completed at $(date)" && \
-    echo "Size change: $(cat /tmp/build-metrics/stage-9-size-start.txt) -> $(cat /tmp/build-metrics/stage-9-size-end.txt)"
+RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak,end,$(date +%s)" >> /tmp/build-metrics/stage-11-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak.csv && \
+    echo "Stage 11 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-11-size-start.txt) -> $(cat /tmp/build-metrics/stage-11-size-end.txt)"
 
 # ===========================================================================
-# STAGE 10: PYTHON 3.13 INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py)
-# ===========================================================================
-# This stage adds Python 3.13 using the deadsnakes PPA for the latest Python version.
-# ---------------------------------------------------------------------------
-
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py
-
-# ---------------------------------------------------------------------------
-# Build Metrics: Stage 10 Start
-# ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py,start,$(date +%s)" > /tmp/build-metrics/stage-10-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py.csv && \
-    echo "Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py) started at $(date)" && \
-    du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-10-size-start.txt && \
-    echo "Initial size: $(cat /tmp/build-metrics/stage-10-size-start.txt)"
-
-# Switch to root for system package installation
-USER root
-
-# ---------------------------------------------------------------------------
-# Python 3.13 installation using deadsnakes PPA
-# ---------------------------------------------------------------------------
-# The deadsnakes PPA provides the latest Python versions for Ubuntu.
-# We install Python 3.13 and let it manage the pip installation.
-# ---------------------------------------------------------------------------
-RUN set -e; \
-    echo "Adding deadsnakes PPA for Python 3.13..."; \
-    apt-get update -qq && \
-    apt-get install -y --no-install-recommends software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa -y && \
-    apt-get update -qq && \
-    echo "Installing Python 3.13..."; \
-    apt-get install -y --no-install-recommends \
-        python3.13 \
-        python3.13-dev \
-        python3.13-venv && \
-    # Update alternatives to make python3.13 the default python3
-    # Note: python3 defaults to the alternative with the highest priority number
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 2 && \
-    # Install pip using Python 3.13's built-in ensurepip (without upgrade to avoid conflicts)
-    python3.13 -m ensurepip && \
-    # Install common development tools
-    python3.13 -m pip install black flake8 mypy isort && \
-    # Verify installation
-    python3 --version && \
-    python3.13 --version && \
-    python3.13 -m pip --version && \
-    echo "✅ Python 3.13 installed successfully" && \
-    # Clean up
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# ---------------------------------------------------------------------------
-# Build Metrics: Stage 10 End
-# ---------------------------------------------------------------------------
-RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-10-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py,end,$(date +%s)" >> /tmp/build-metrics/stage-10-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py.csv && \
-    echo "Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py) completed at $(date)" && \
-    echo "Size change: $(cat /tmp/build-metrics/stage-10-size-start.txt) -> $(cat /tmp/build-metrics/stage-10-size-end.txt)"
-
-USER me
-
-# ===========================================================================
-# STAGE 11: FULL DEVELOPMENT ENVIRONMENT          (full)
+# STAGE 12: FULL DEVELOPMENT ENVIRONMENT          (full)
 # ===========================================================================
 # This is the final stage that will be the default target when building
 # with no --target flag. Currently empty but ready for additional setup.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-r-py AS full
+FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak AS full
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 11 Start
+# Build Metrics: Stage 12 Start
 # ---------------------------------------------------------------------------
 USER root
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),full,start,$(date +%s)" > /tmp/build-metrics/stage-11-full.csv && \
-    echo "Stage 11 (full) started at $(date)" && \
-    du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-start.txt && \
-    echo "Initial size: $(cat /tmp/build-metrics/stage-11-size-start.txt)"
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),full,start,$(date +%s)" > /tmp/build-metrics/stage-12-full.csv && \
+    echo "Stage 12 (full) started at $(date)" && \
+    du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-12-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-12-size-start.txt)"
 
 # Copy and apply shell configuration
 COPY dotfiles/shell-common /tmp/shell-common
@@ -1436,12 +1475,12 @@ ENV SHELL=/bin/zsh
 CMD ["/bin/zsh", "-l"]
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 11 End
+# Build Metrics: Stage 12 End
 # ---------------------------------------------------------------------------
-RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),full,end,$(date +%s)" >> /tmp/build-metrics/stage-11-full.csv && \
-    echo "Stage 11 (full) completed at $(date)" && \
-    echo "Size change: $(cat /tmp/build-metrics/stage-11-size-start.txt) -> $(cat /tmp/build-metrics/stage-11-size-end.txt)"
+RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-12-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),full,end,$(date +%s)" >> /tmp/build-metrics/stage-12-full.csv && \
+    echo "Stage 12 (full) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-12-size-start.txt) -> $(cat /tmp/build-metrics/stage-12-size-end.txt)"
 
 
 # ---------------------------------------------------------------------------

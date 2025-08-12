@@ -279,6 +279,43 @@ else
     fi
 fi
 
+# Install btw from GitHub using pak
+echo -n "📊 Installing btw from GitHub with pak... "
+btw_command="
+library(pak)
+cat('📦 Building btw...\\n')
+flush.console()
+tryCatch({
+    start_time <- Sys.time()
+    pak::pkg_install('posit-dev/btw')
+    end_time <- Sys.time()
+    duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
+    cat('✅ Built btw in', duration, 'seconds\\n')
+    cat('SUCCESS\\n')
+}, error = function(e) {
+    cat('ERROR:', conditionMessage(e), '\\n')
+    quit(status = 1)
+})
+"
+
+if [[ "$DEBUG_MODE" == "true" ]]; then
+    if echo "$btw_command" | R --slave --no-restore; then
+        echo "✅"
+        ((installed_count++))
+    else
+        echo "❌"
+        failed_packages+=("btw")
+    fi
+else
+    if echo "$btw_command" | R --slave --no-restore >/dev/null 2>&1; then
+        echo "✅"
+        ((installed_count++))
+    else
+        echo "❌"
+        failed_packages+=("btw")
+    fi
+fi
+
 # Final summary
 end_time=$(date +%s)
 total_duration=$((end_time - start_time))
