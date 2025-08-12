@@ -981,6 +981,7 @@ RUN mkdir -p /tmp/build-metrics && \
 # ---------------------------------------------------------------------------
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
+    echo "🔍 DEBUG: Detected architecture: $ARCH"; \
     case "$ARCH" in \
       amd64) \
         echo "Installing pandoc-crossref from pre-built binary for amd64..."; \
@@ -1005,23 +1006,32 @@ RUN set -e; \
         rm /tmp/pandoc-crossref.tar.xz; \
         ;; \
       arm64) \
-        echo "Building pandoc-crossref from source for arm64 (no pre-built Linux binary available)..."; \
-        # Get the latest release tag for pandoc-crossref
-        LATEST_TAG=$(curl -s https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
-        echo "Building pandoc-crossref version: ${LATEST_TAG}"; \
-        # Clone the specific release tag
-        cd /tmp; \
-        git clone --depth 1 --branch "${LATEST_TAG}" https://github.com/lierdakil/pandoc-crossref.git; \
-        cd pandoc-crossref; \
-        # Build with stack (this will take several minutes)
+        echo "Building pandoc-crossref from source for ARM64..."; \
+        # Install additional build dependencies for pandoc-crossref
+        apt-get update -qq && \
+        apt-get install -y --no-install-recommends \
+            zlib1g-dev \
+            libtinfo-dev \
+            libgmp-dev && \
+        # Get the latest pandoc-crossref version from GitHub
+        RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/lierdakil/pandoc-crossref/releases/latest); \
+        CROSSREF_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+        echo "Building pandoc-crossref version: ${CROSSREF_VERSION}"; \
+        # Clone the pandoc-crossref repository at the specific version
+        git clone --depth 1 --branch "${CROSSREF_VERSION}" https://github.com/lierdakil/pandoc-crossref.git /tmp/pandoc-crossref; \
+        cd /tmp/pandoc-crossref; \
+        # Build using Stack (this will take a while on ARM64)
+        echo "Starting Stack build (this may take 20-30 minutes on ARM64)..."; \
         stack setup; \
-        stack build; \
-        # Install the binary
-        stack install --local-bin-path /usr/local/bin; \
-        # Cleanup build artifacts to reduce image size
+        stack build --copy-bins --local-bin-path /usr/local/bin; \
+        # Verify the binary was built and installed
+        ls -la /usr/local/bin/pandoc-crossref; \
+        chmod +x /usr/local/bin/pandoc-crossref; \
+        # Clean up build directory and apt cache
         cd /; \
         rm -rf /tmp/pandoc-crossref; \
-        rm -rf /root/.stack; \
+        apt-get clean && rm -rf /var/lib/apt/lists/*; \
+        echo "✅ pandoc-crossref built from source for ARM64"; \
         ;; \
       *) \
         echo "Unsupported architecture for pandoc-crossref: $ARCH"; \
@@ -1033,7 +1043,8 @@ RUN set -e; \
     PANDOC_VERSION=$(pandoc --version | head -n 1 | sed 's/pandoc //'); \
     echo "Installed pandoc-crossref for Pandoc version: ${PANDOC_VERSION}"; \
     # Verify installation
-    pandoc-crossref --version
+        echo "Verifying pandoc-crossref build..."; \
+        pandoc-crossref --version; \
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 7 End
