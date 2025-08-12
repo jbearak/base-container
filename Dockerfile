@@ -18,7 +18,6 @@
 #             Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode): Setup VS Code server with pre-installed extensions.
 #             Stage 12 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
 #
-# Build Metrics: Each stage tracks timing and size information:
 #   • Start/end timestamps for build duration calculation
 #   • Filesystem usage before/after each stage
 #   • Final summary table showing cumulative time and size
@@ -61,15 +60,7 @@
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS base
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 1 Start
-# ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base,start,$(date +%s)" > /tmp/build-metrics/stage-1-base.csv && \
-    echo "Stage 1 (base) started at $(date)" && \
-    # Record initial filesystem usage
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-1-size-start.txt && \
-    echo "Stage started at $(date)"
-
+# STAGE 1: BASE SYSTEM - Started at build time
 # ---------------------------------------------------------------------------
 # Container metadata labels
 # ---------------------------------------------------------------------------
@@ -549,12 +540,8 @@ RUN mkdir -p /home/me && chown me:me /home/me
 RUN chown -R me:me /home/me
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 1 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-1-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ---------------------------------------------------------------------------
 # Dotfiles and configuration files
@@ -634,13 +621,7 @@ USER root
 FROM base AS base-nvim
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 2 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim,start,$(date +%s)" > /tmp/build-metrics/stage-2-base-nvim.csv && \
-    echo "Stage 2 (base-nvim) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-2-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # Switch to the 'me' user for nvim plugin installation
 USER me
@@ -661,12 +642,8 @@ RUN nvim --headless "+Lazy! sync" +qa
 USER root
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 2 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-2-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ===========================================================================
 # STAGE 3: LATEX TYPESETTING SUPPORT                (base-nvim-tex)
@@ -677,13 +654,7 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-2-size-end.txt && \
 FROM base-nvim AS base-nvim-tex
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 4 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex,start,$(date +%s)" > /tmp/build-metrics/stage-4-base-nvim-tex.csv && \
-    echo "Stage 4 (base-nvim-tex) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-4-size-start.txt && \
-    echo "Stage started at $(date)"
 # ---------------------------------------------------------------------------
 # This doesn't install the full TeX Live distribution, to keep the image
 # size down, though this is contributes a lot to the final image size.
@@ -725,12 +696,8 @@ RUN set -e; \
     rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 4 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-4-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ===========================================================================
 # STAGE 4: PANDOC                              (base-nvim-tex-pandoc)
@@ -742,13 +709,7 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-4-size-end.txt && \
 FROM base-nvim-tex AS base-nvim-tex-pandoc
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 5 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc,start,$(date +%s)" > /tmp/build-metrics/stage-5-base-nvim-tex-pandoc.csv && \
-    echo "Stage 5 (base-nvim-tex-pandoc) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-5-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # ---------------------------------------------------------------------------
 # Pandoc installation
@@ -811,12 +772,8 @@ RUN set -e; \
     rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 5 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-5-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ===========================================================================
 # STAGE 5: HASKELL                (base-nvim-tex-pandoc-haskell)
@@ -827,13 +784,7 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-5-size-end.txt && \
 FROM base-nvim-tex-pandoc AS base-nvim-tex-pandoc-haskell
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 6 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell,start,$(date +%s)" > /tmp/build-metrics/stage-6-base-nvim-tex-pandoc-haskell.csv && \
-    echo "Stage 6 (base-nvim-tex-pandoc-haskell) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-6-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # ---------------------------------------------------------------------------
 # Haskell Stack installation
@@ -884,12 +835,8 @@ RUN set -e; \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 6 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-6-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ===========================================================================
 # STAGE 6: PANDOC-CROSSREF      (base-nvim-tex-pandoc-haskell-crossref)
@@ -901,13 +848,7 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-6-size-end.txt && \
 FROM base-nvim-tex-pandoc-haskell AS base-nvim-tex-pandoc-haskell-crossref
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 7 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref,start,$(date +%s)" > /tmp/build-metrics/stage-7-base-nvim-tex-pandoc-haskell-crossref.csv && \
-    echo "Stage 7 (base-nvim-tex-pandoc-haskell-crossref) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-7-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # ---------------------------------------------------------------------------
 # Install pandoc-crossref from GitHub releases or build from source
@@ -980,12 +921,8 @@ RUN set -e; \
     pandoc-crossref --version
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 7 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-7-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ===========================================================================
 # STAGE 7: MISC (whatever came up in debugging)           (base-nvim-tex-pandoc-plus)
@@ -997,13 +934,7 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-7-size-end.txt && \
 FROM base-nvim-tex-pandoc-haskell-crossref AS base-nvim-tex-pandoc-haskell-crossref-plus
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 8 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus,start,$(date +%s)" > /tmp/build-metrics/stage-8-base-nvim-tex-pandoc-haskell-crossref-plus.csv && \
-    echo "Stage 8 (base-nvim-tex-pandoc-haskell-crossref-plus) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-8-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # Install additional LaTeX packages (as root for system-level installation)
 RUN set -e; \
@@ -1056,12 +987,8 @@ RUN set -e; \
 USER root
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 8 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-8-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ===========================================================================
 # STAGE 8: PYTHON 3.13 INSTALLATION          (base-nvim-tex-pandoc-haskell-crossref-plus-py)
@@ -1072,13 +999,7 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-8-size-end.txt && \
 FROM base-nvim-tex-pandoc-haskell-crossref-plus AS base-nvim-tex-pandoc-haskell-crossref-plus-py
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 9 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py,start,$(date +%s)" > /tmp/build-metrics/stage-9-base-nvim-tex-pandoc-haskell-crossref-plus-py.csv && \
-    echo "Stage 9 (base-nvim-tex-pandoc-haskell-crossref-plus-py) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-9-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # Switch to root for system package installation
 USER root
@@ -1117,12 +1038,8 @@ RUN set -e; \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 9 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-9-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ===========================================================================
 # STAGE 9: R INSTALLATION          (base-nvim-tex-pandoc-haskell-crossref-plus-py-r)
@@ -1134,13 +1051,7 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-9-size-end.txt && \
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 10 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r,start,$(date +%s)" > /tmp/build-metrics/stage-10-base-nvim-tex-pandoc-haskell-crossref-plus-py-r.csv && \
-    echo "Stage 10 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-10-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # Switch to root for system package installation
 USER root
@@ -1245,12 +1156,8 @@ RUN mkdir -p /home/me/.R && \
     chown -R me:me /home/me/.R
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 10 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-10-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 USER me
 
@@ -1263,13 +1170,7 @@ USER me
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 11 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak,start,$(date +%s)" > /tmp/build-metrics/stage-11-base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak.csv && \
-    echo "Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-11-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # ---------------------------------------------------------------------------
 # System package updates
@@ -1368,12 +1269,8 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     fi
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 11 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-11-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 # ===========================================================================
 # STAGE 11: VS CODE SERVER AND EXTENSIONS              (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode)
@@ -1386,13 +1283,7 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-11-size-end.txt && 
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 11 Start
 # ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode,start,$(date +%s)" > /tmp/build-metrics/stage-11-base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode.csv && \
-    echo "Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-11-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # Switch to the 'me' user for VS Code server installation
 USER me
@@ -1445,12 +1336,8 @@ RUN chown -R me:me /home/me/.vscode-server
 USER root
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 11 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-11-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 
 # ===========================================================================
@@ -1463,14 +1350,8 @@ RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-11-size-end.txt && 
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 12 Start
 # ---------------------------------------------------------------------------
 USER root
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),full,start,$(date +%s)" > /tmp/build-metrics/stage-12-full.csv && \
-    echo "Stage 12 (full) started at $(date)" && \
-    echo "Build metrics: $(date)" > /tmp/build-metrics/stage-12-size-start.txt && \
-    echo "Stage started at $(date)"
 
 # Copy and apply shell configuration
 COPY dotfiles/shell-common /tmp/shell-common
@@ -1494,12 +1375,8 @@ ENV SHELL=/bin/zsh
 CMD ["/bin/zsh", "-l"]
 
 # ---------------------------------------------------------------------------
-# Build Metrics: Stage 12 End
 # ---------------------------------------------------------------------------
-RUN echo "Build metrics: $(date)" > /tmp/build-metrics/stage-12-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),,end,$(date +%s)" >> /tmp/build-metrics/.csv && \
     echo "" && \
-    echo "Stage completed at $(date)"
 
 
 # ---------------------------------------------------------------------------
