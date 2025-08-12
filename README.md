@@ -265,13 +265,15 @@ If you use VS Code to create the container, add the following to your `.devconta
 
 ### Architecture
 
-The container uses a multi-stage build process with BuildKit caching for optimal performance:
+The container uses a multi-stage build process optimized for Docker layer caching:
 
 - **Base Stage**: Ubuntu 24.04 with essential system packages
-- **Development Tools**: Neovim, VS Code Server, Git, shell utilities  
+- **Development Tools**: Neovim with plugins, Git, shell utilities  
 - **Document Preparation**: LaTeX, Pandoc, Haskell (for pandoc-crossref)
-- **R Environment**: R 4.5+ with comprehensive packages via pak
-- **Python Environment**: Python 3.12+ with data science packages
+- **Programming Languages**: Python 3.13, R 4.5+ with comprehensive packages
+- **VS Code Integration**: VS Code Server with extensions (positioned last for optimal caching)
+
+**Optimization Strategy**: Expensive, stable components (LaTeX, Haskell) are built early, while frequently updated components (VS Code extensions) are positioned late to minimize rebuild times when making changes.
 
 ### R Package Management
 

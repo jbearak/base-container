@@ -1,21 +1,21 @@
 # ===========================================================================
-# MULTI-STAGE R base-container IMAGE
+# MULTI-STAGE R base-container IMAGE - OPTIMIZED FOR DOCKER LAYER CACHING
 # ===========================================================================
 # Purpose   : Build a containerized R development environment optimized for
 #             VS Code and the Dev Containers extension.  This Dockerfile uses
-#             a multi-stage approach for debugging:
+#             a multi-stage approach optimized for Docker layer caching:
 #
-#             Stage 1 (base)               : Setup Ubuntu with basic tools (R components moved to stage 10).
+#             Stage 1 (base)               : Setup Ubuntu with basic tools.
 #             Stage 2 (base-nvim)          : Initialize and bootstrap Neovim plugins using lazy.nvim.
-#             Stage 3 (base-nvim-vscode)   : Setup VS Code server with pre-installed extensions.
-#             Stage 4 (base-nvim-vscode-tex): Add LaTeX tools for typesetting.
-#             Stage 5 (base-nvim-vscode-tex-pandoc): Add Pandoc to support typsetting from markdown.
-#             Stage 6 (base-nvim-vscode-tex-pandoc-haskell): Compile Haskell to compile pandoc-crossref.
-#             Stage 7 (base-nvim-vscode-tex-pandoc-haskell-crossref): Add pandoc-crossref for numbering figures, equations, tables.
-#             Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus): Add extra LaTeX packages via tlmgr (e.g. soul)
-#             Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py): Add Python 3.13 using deadsnakes PPA.
-#             Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r): Install R, CmdStan, and JAGS.
-#             Stage 11 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak): Install a comprehensive suite of R packages.
+#             Stage 3 (base-nvim-tex)      : Add LaTeX tools for typesetting.
+#             Stage 4 (base-nvim-tex-pandoc): Add Pandoc to support typesetting from markdown.
+#             Stage 5 (base-nvim-tex-pandoc-haskell): Compile Haskell to compile pandoc-crossref.
+#             Stage 6 (base-nvim-tex-pandoc-haskell-crossref): Add pandoc-crossref for numbering figures, equations, tables.
+#             Stage 7 (base-nvim-tex-pandoc-haskell-crossref-plus): Add extra LaTeX packages via tlmgr (e.g. soul)
+#             Stage 8 (base-nvim-tex-pandoc-haskell-crossref-plus-py): Add Python 3.13 using deadsnakes PPA.
+#             Stage 9 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r): Install R, CmdStan, and JAGS.
+#             Stage 10 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak): Install a comprehensive suite of R packages.
+#             Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode): Setup VS Code server with pre-installed extensions.
 #             Stage 12 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
 #
 # Build Metrics: Each stage tracks timing and size information:
@@ -23,28 +23,38 @@
 #   • Filesystem usage before/after each stage
 #   • Final summary table showing cumulative time and size
 #
+# OPTIMIZATION STRATEGY:
+#   • Expensive, stable stages early: LaTeX, Haskell, pandoc-crossref (stages 3-6)
+#   • Expensive, frequently updated stages middle: R packages (stage 10)
+#   • Fast, frequently updated stages late: VS Code (stage 11) - only ~3-5 min rebuild
+#
 # Why multi-stage?
 #   • Allows for quick debugging of specific components without rebuilding everything
 #   • Better separation of concerns (each stage has a clear purpose)
-#   • Stage 6 exists for quick iteration on issues found after Stage 5
+#   • Optimized for Docker layer caching - VS Code updates won't invalidate R packages
 #
 # Usage     : See build-container.sh for user-friendly build commands, or
 #             build directly with:
 #               docker build --target base -t base-container:base .
 #               docker build --target base-nvim -t base-container:base-nvim .
-#               docker build --target base-nvim-vscode -t base-container:base-nvim-vscode .
-#               docker build --target base-nvim-vscode-tex -t base-container:base-nvim-vscode-tex .
-#               docker build --target base-nvim-vscode-tex-pandoc -t base-container:base-nvim-vscode-tex-pandoc .
-#               docker build --target base-nvim-vscode-tex-pandoc-plus -t base-container:base-nvim-vscode-tex-pandoc-plus .
+#               docker build --target base-nvim-tex -t base-container:base-nvim-tex .
+#               docker build --target base-nvim-tex-pandoc -t base-container:base-nvim-tex-pandoc .
+#               docker build --target base-nvim-tex-pandoc-haskell -t base-container:base-nvim-tex-pandoc-haskell .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref -t base-container:base-nvim-tex-pandoc-haskell-crossref .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode .
 #               docker build --target full -t base-container:latest .
 #
 # ---------------------------------------------------------------------------
 
 # ===========================================================================
-# STAGE 1: BASE SYSTEM (R COMPONENTS MOVED TO STAGE 10)
+# STAGE 1: BASE SYSTEM
 # ===========================================================================
 # This stage installs Ubuntu packages and copies user configuration files 
-# (dotfiles). R installation, CmdStan, and JAGS have been moved to stage 10
+# (dotfiles). R installation, CmdStan, and JAGS have been moved to stage 9
 # for better build caching and separation of concerns.
 # ---------------------------------------------------------------------------
 
@@ -659,96 +669,19 @@ RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print su
     echo "Size change: $(cat /tmp/build-metrics/stage-2-size-start.txt) -> $(cat /tmp/build-metrics/stage-2-size-end.txt)"
 
 # ===========================================================================
-# STAGE 3: VS CODE SERVER AND EXTENSIONS              (base-nvim-vscode)
-# ===========================================================================
-# This stage pre-installs VS Code server and commonly used extensions.
-# This significantly speeds up container startup since extensions don't need to
-# be downloaded and installed each time the container starts.
-# ---------------------------------------------------------------------------
-
-FROM base-nvim AS base-nvim-vscode
-
-# ---------------------------------------------------------------------------
-# Build Metrics: Stage 3 Start
-# ---------------------------------------------------------------------------
-RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode,start,$(date +%s)" > /tmp/build-metrics/stage-3-base-nvim-vscode.csv && \
-    echo "Stage 3 (base-nvim-vscode) started at $(date)" && \
-    du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-3-size-start.txt && \
-    echo "Initial size: $(cat /tmp/build-metrics/stage-3-size-start.txt)"
-
-# Switch to the 'me' user for VS Code server installation
-USER me
-
-# ---------------------------------------------------------------------------
-# VS Code Server Installation
-# ---------------------------------------------------------------------------
-# Download and install VS Code server for detected architecture using update API
-# ---------------------------------------------------------------------------
-RUN set -e; \
-    mkdir -p /home/me/.vscode-server/bin; \
-    ARCH="$(dpkg --print-architecture)"; \
-    case "$ARCH" in \
-      amd64) VSCODE_ARCH="x64" ;; \
-      arm64) VSCODE_ARCH="arm64" ;; \
-      *) echo "Unsupported arch for VS Code Server: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
-    esac; \
-    echo "Installing VS Code server (${VSCODE_ARCH})..."; \
-    VSCODE_URL="https://update.code.visualstudio.com/latest/server-linux-${VSCODE_ARCH}/stable"; \
-    echo "VS Code server URL: ${VSCODE_URL}"; \
-    curl -fsSL "${VSCODE_URL}" -o /tmp/vscode-server.tar.gz; \
-    tar -xzf /tmp/vscode-server.tar.gz -C /home/me/.vscode-server/bin --strip-components=1; \
-    rm /tmp/vscode-server.tar.gz
-
-# ---------------------------------------------------------------------------
-# VS Code Extensions Pre-installation
-# ---------------------------------------------------------------------------
-# Use the VS Code CLI to install extensions properly
-# This approach is more reliable than manually downloading VSIX files
-# ---------------------------------------------------------------------------
-RUN /home/me/.vscode-server/bin/bin/code-server \
-        --install-extension REditorSupport.r \
-        --install-extension REditorSupport.r-syntax \
-        --install-extension kylebarron.stata-enhanced \
-        --install-extension dnut.rewrap-revived \
-        --install-extension mechatroner.rainbow-csv \
-        --install-extension GrapeCity.gc-excelviewer \
-        --install-extension tomoki1207.pdf \
-        --install-extension bierner.markdown-mermaid \
-        --install-extension atlassian.atlascode \
-        --install-extension GitHub.vscode-pull-request-github \
-        --user-data-dir /home/me/.vscode-server \
-        --extensions-dir /home/me/.vscode-server/extensions \
-        || echo "Some extensions may have failed to install but continuing..."
-
-# Set correct ownership for VS Code server files
-RUN chown -R me:me /home/me/.vscode-server
-
-# Switch back to root for any remaining system-level setup
-USER root
-
-# ---------------------------------------------------------------------------
-# Build Metrics: Stage 3 End
-# ---------------------------------------------------------------------------
-RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-3-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode,end,$(date +%s)" >> /tmp/build-metrics/stage-3-base-nvim-vscode.csv && \
-    echo "Stage 3 (base-nvim-vscode) completed at $(date)" && \
-    echo "Size change: $(cat /tmp/build-metrics/stage-3-size-start.txt) -> $(cat /tmp/build-metrics/stage-3-size-end.txt)"
-
-# ===========================================================================
-# STAGE 4: LATEX TYPESETTING SUPPORT                (base-nvim-vscode-tex)
+# STAGE 3: LATEX TYPESETTING SUPPORT                (base-nvim-tex)
 # ===========================================================================
 # This stage adds LaTeX tools, which we need for typesetting papers. 
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode AS base-nvim-vscode-tex
+FROM base-nvim AS base-nvim-tex
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 4 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex,start,$(date +%s)" > /tmp/build-metrics/stage-4-base-nvim-vscode-tex.csv && \
-    echo "Stage 4 (base-nvim-vscode-tex) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex,start,$(date +%s)" > /tmp/build-metrics/stage-4-base-nvim-tex.csv && \
+    echo "Stage 4 (base-nvim-tex) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-4-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-4-size-start.txt)"
 # ---------------------------------------------------------------------------
@@ -795,25 +728,25 @@ RUN set -e; \
 # Build Metrics: Stage 4 End
 # ---------------------------------------------------------------------------
 RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-4-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex,end,$(date +%s)" >> /tmp/build-metrics/stage-4-base-nvim-vscode-tex.csv && \
-    echo "Stage 4 (base-nvim-vscode-tex) completed at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex,end,$(date +%s)" >> /tmp/build-metrics/stage-4-base-nvim-tex.csv && \
+    echo "Stage 4 (base-nvim-tex) completed at $(date)" && \
     echo "Size change: $(cat /tmp/build-metrics/stage-4-size-start.txt) -> $(cat /tmp/build-metrics/stage-4-size-end.txt)"
 
 # ===========================================================================
-# STAGE 5: PANDOC                              (base-nvim-vscode-tex-pandoc)
+# STAGE 4: PANDOC                              (base-nvim-tex-pandoc)
 # ===========================================================================
 # This stage adds Pandoc so we can write a paper in Markdown and convert
 # it to PDF (via LaTeX) or Word. Subsequent stages add pandoc-crossref.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex AS base-nvim-vscode-tex-pandoc
+FROM base-nvim-tex AS base-nvim-tex-pandoc
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 5 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc,start,$(date +%s)" > /tmp/build-metrics/stage-5-base-nvim-vscode-tex-pandoc.csv && \
-    echo "Stage 5 (base-nvim-vscode-tex-pandoc) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc,start,$(date +%s)" > /tmp/build-metrics/stage-5-base-nvim-tex-pandoc.csv && \
+    echo "Stage 5 (base-nvim-tex-pandoc) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-5-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-5-size-start.txt)"
 
@@ -881,24 +814,24 @@ RUN set -e; \
 # Build Metrics: Stage 5 End
 # ---------------------------------------------------------------------------
 RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-5-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc,end,$(date +%s)" >> /tmp/build-metrics/stage-5-base-nvim-vscode-tex-pandoc.csv && \
-    echo "Stage 5 (base-nvim-vscode-tex-pandoc) completed at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc,end,$(date +%s)" >> /tmp/build-metrics/stage-5-base-nvim-tex-pandoc.csv && \
+    echo "Stage 5 (base-nvim-tex-pandoc) completed at $(date)" && \
     echo "Size change: $(cat /tmp/build-metrics/stage-5-size-start.txt) -> $(cat /tmp/build-metrics/stage-5-size-end.txt)"
 
 # ===========================================================================
-# STAGE 6: HASKELL                (base-nvim-vscode-tex-pandoc-haskell)
+# STAGE 5: HASKELL                (base-nvim-tex-pandoc-haskell)
 # ===========================================================================
 # This stage adds the Haskell compiler, which we need to build pandoc-crossref
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc AS base-nvim-vscode-tex-pandoc-haskell
+FROM base-nvim-tex-pandoc AS base-nvim-tex-pandoc-haskell
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 6 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell,start,$(date +%s)" > /tmp/build-metrics/stage-6-base-nvim-vscode-tex-pandoc-haskell.csv && \
-    echo "Stage 6 (base-nvim-vscode-tex-pandoc-haskell) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell,start,$(date +%s)" > /tmp/build-metrics/stage-6-base-nvim-tex-pandoc-haskell.csv && \
+    echo "Stage 6 (base-nvim-tex-pandoc-haskell) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-6-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-6-size-start.txt)"
 
@@ -954,25 +887,25 @@ RUN set -e; \
 # Build Metrics: Stage 6 End
 # ---------------------------------------------------------------------------
 RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-6-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell,end,$(date +%s)" >> /tmp/build-metrics/stage-6-base-nvim-vscode-tex-pandoc-haskell.csv && \
-    echo "Stage 6 (base-nvim-vscode-tex-pandoc-haskell) completed at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell,end,$(date +%s)" >> /tmp/build-metrics/stage-6-base-nvim-tex-pandoc-haskell.csv && \
+    echo "Stage 6 (base-nvim-tex-pandoc-haskell) completed at $(date)" && \
     echo "Size change: $(cat /tmp/build-metrics/stage-6-size-start.txt) -> $(cat /tmp/build-metrics/stage-6-size-end.txt)"
 
 # ===========================================================================
-# STAGE 7: PANDOC-CROSSREF      (base-nvim-vscode-tex-pandoc-haskell-crossref)
+# STAGE 6: PANDOC-CROSSREF      (base-nvim-tex-pandoc-haskell-crossref)
 # ===========================================================================
 # This stage installs pandoc-crossref from pre-built binaries when available,
 # or builds from source for unsupported architectures
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell AS base-nvim-vscode-tex-pandoc-haskell-crossref
+FROM base-nvim-tex-pandoc-haskell AS base-nvim-tex-pandoc-haskell-crossref
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 7 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref,start,$(date +%s)" > /tmp/build-metrics/stage-7-base-nvim-vscode-tex-pandoc-haskell-crossref.csv && \
-    echo "Stage 7 (base-nvim-vscode-tex-pandoc-haskell-crossref) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref,start,$(date +%s)" > /tmp/build-metrics/stage-7-base-nvim-tex-pandoc-haskell-crossref.csv && \
+    echo "Stage 7 (base-nvim-tex-pandoc-haskell-crossref) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-7-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-7-size-start.txt)"
 
@@ -1043,32 +976,32 @@ RUN set -e; \
     PANDOC_VERSION=$(pandoc --version | head -n 1 | sed 's/pandoc //'); \
     echo "Installed pandoc-crossref for Pandoc version: ${PANDOC_VERSION}"; \
     # Verify installation
-        echo "Verifying pandoc-crossref build..."; \
-        pandoc-crossref --version; \
+    echo "Verifying pandoc-crossref build..."; \
+    pandoc-crossref --version
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 7 End
 # ---------------------------------------------------------------------------
 RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-7-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref,end,$(date +%s)" >> /tmp/build-metrics/stage-7-base-nvim-vscode-tex-pandoc-haskell-crossref.csv && \
-    echo "Stage 7 (base-nvim-vscode-tex-pandoc-haskell-crossref) completed at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref,end,$(date +%s)" >> /tmp/build-metrics/stage-7-base-nvim-tex-pandoc-haskell-crossref.csv && \
+    echo "Stage 7 (base-nvim-tex-pandoc-haskell-crossref) completed at $(date)" && \
     echo "Size change: $(cat /tmp/build-metrics/stage-7-size-start.txt) -> $(cat /tmp/build-metrics/stage-7-size-end.txt)"
 
 # ===========================================================================
-# STAGE 8: MISC (whatever came up in debugging)           (base-nvim-vscode-tex-pandoc-plus)
+# STAGE 7: MISC (whatever came up in debugging)           (base-nvim-tex-pandoc-plus)
 # ===========================================================================
 # Builds on the Pandoc stage but installs extra LaTeX packages with tlmgr.
 # Useful to iterate quickly on TeX deps without re-building Pandoc.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus
+FROM base-nvim-tex-pandoc-haskell-crossref AS base-nvim-tex-pandoc-haskell-crossref-plus
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 8 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus,start,$(date +%s)" > /tmp/build-metrics/stage-8-base-nvim-vscode-tex-pandoc-haskell-crossref-plus.csv && \
-    echo "Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus,start,$(date +%s)" > /tmp/build-metrics/stage-8-base-nvim-tex-pandoc-haskell-crossref-plus.csv && \
+    echo "Stage 8 (base-nvim-tex-pandoc-haskell-crossref-plus) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-8-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-8-size-start.txt)"
 
@@ -1126,24 +1059,24 @@ USER root
 # Build Metrics: Stage 8 End
 # ---------------------------------------------------------------------------
 RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-8-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus,end,$(date +%s)" >> /tmp/build-metrics/stage-8-base-nvim-vscode-tex-pandoc-haskell-crossref-plus.csv && \
-    echo "Stage 8 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus) completed at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus,end,$(date +%s)" >> /tmp/build-metrics/stage-8-base-nvim-tex-pandoc-haskell-crossref-plus.csv && \
+    echo "Stage 8 (base-nvim-tex-pandoc-haskell-crossref-plus) completed at $(date)" && \
     echo "Size change: $(cat /tmp/build-metrics/stage-8-size-start.txt) -> $(cat /tmp/build-metrics/stage-8-size-end.txt)"
 
 # ===========================================================================
-# STAGE 9: PYTHON 3.13 INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py)
+# STAGE 8: PYTHON 3.13 INSTALLATION          (base-nvim-tex-pandoc-haskell-crossref-plus-py)
 # ===========================================================================
 # This stage adds Python 3.13 using the deadsnakes PPA for the latest Python version.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py
+FROM base-nvim-tex-pandoc-haskell-crossref-plus AS base-nvim-tex-pandoc-haskell-crossref-plus-py
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 9 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py,start,$(date +%s)" > /tmp/build-metrics/stage-9-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py.csv && \
-    echo "Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py,start,$(date +%s)" > /tmp/build-metrics/stage-9-base-nvim-tex-pandoc-haskell-crossref-plus-py.csv && \
+    echo "Stage 9 (base-nvim-tex-pandoc-haskell-crossref-plus-py) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-9-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-9-size-start.txt)"
 
@@ -1187,25 +1120,25 @@ RUN set -e; \
 # Build Metrics: Stage 9 End
 # ---------------------------------------------------------------------------
 RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-9-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py,end,$(date +%s)" >> /tmp/build-metrics/stage-9-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py.csv && \
-    echo "Stage 9 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py) completed at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py,end,$(date +%s)" >> /tmp/build-metrics/stage-9-base-nvim-tex-pandoc-haskell-crossref-plus-py.csv && \
+    echo "Stage 9 (base-nvim-tex-pandoc-haskell-crossref-plus-py) completed at $(date)" && \
     echo "Size change: $(cat /tmp/build-metrics/stage-9-size-start.txt) -> $(cat /tmp/build-metrics/stage-9-size-end.txt)"
 
 # ===========================================================================
-# STAGE 10: R INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r)
+# STAGE 9: R INSTALLATION          (base-nvim-tex-pandoc-haskell-crossref-plus-py-r)
 # ===========================================================================
 # This stage installs R, CmdStan, and JAGS. R installation has been moved from
 # the base stage to allow for better build caching and separation of concerns.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r
+FROM base-nvim-tex-pandoc-haskell-crossref-plus-py AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 10 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r,start,$(date +%s)" > /tmp/build-metrics/stage-10-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r.csv && \
-    echo "Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r,start,$(date +%s)" > /tmp/build-metrics/stage-10-base-nvim-tex-pandoc-haskell-crossref-plus-py-r.csv && \
+    echo "Stage 10 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-10-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-10-size-start.txt)"
 
@@ -1229,9 +1162,13 @@ RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         software-properties-common \
         dirmngr \
-        jags && \
-    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
-    add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" && \
+        jags \
+        gnupg \
+        lsb-release && \
+    # Add CRAN repository key
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/cran_ubuntu_key.gpg && \
+    # Add CRAN repository manually (avoiding add-apt-repository issues)
+    echo "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" > /etc/apt/sources.list.d/cran.list && \
     apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         r-base \
@@ -1307,26 +1244,26 @@ RUN mkdir -p /home/me/.R && \
 # Build Metrics: Stage 10 End
 # ---------------------------------------------------------------------------
 RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-10-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r,end,$(date +%s)" >> /tmp/build-metrics/stage-10-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r.csv && \
-    echo "Stage 10 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r) completed at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r,end,$(date +%s)" >> /tmp/build-metrics/stage-10-base-nvim-tex-pandoc-haskell-crossref-plus-py-r.csv && \
+    echo "Stage 10 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r) completed at $(date)" && \
     echo "Size change: $(cat /tmp/build-metrics/stage-10-size-start.txt) -> $(cat /tmp/build-metrics/stage-10-size-end.txt)"
 
 USER me
 
 # ===========================================================================
-# STAGE 11: R PACKAGES INSTALLATION          (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak)
+# STAGE 10: R PACKAGES INSTALLATION          (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak)
 # ===========================================================================
 # This stage installs all R packages specified in R_packages.txt.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r AS base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak
+FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 11 Start
 # ---------------------------------------------------------------------------
 RUN mkdir -p /tmp/build-metrics && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak,start,$(date +%s)" > /tmp/build-metrics/stage-11-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak.csv && \
-    echo "Stage 11 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak) started at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak,start,$(date +%s)" > /tmp/build-metrics/stage-11-base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak.csv && \
+    echo "Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak) started at $(date)" && \
     du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-start.txt && \
     echo "Initial size: $(cat /tmp/build-metrics/stage-11-size-start.txt)"
 
@@ -1430,9 +1367,87 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
 # Build Metrics: Stage 11 End
 # ---------------------------------------------------------------------------
 RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-end.txt && \
-    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak,end,$(date +%s)" >> /tmp/build-metrics/stage-11-base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak.csv && \
-    echo "Stage 11 (base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak) completed at $(date)" && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak,end,$(date +%s)" >> /tmp/build-metrics/stage-11-base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak.csv && \
+    echo "Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak) completed at $(date)" && \
     echo "Size change: $(cat /tmp/build-metrics/stage-11-size-start.txt) -> $(cat /tmp/build-metrics/stage-11-size-end.txt)"
+
+# ===========================================================================
+# STAGE 11: VS CODE SERVER AND EXTENSIONS              (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode)
+# ===========================================================================
+# This stage pre-installs VS Code server and commonly used extensions.
+# This significantly speeds up container startup since extensions don't need to
+# be downloaded and installed each time the container starts.
+# ---------------------------------------------------------------------------
+
+FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 11 Start
+# ---------------------------------------------------------------------------
+RUN mkdir -p /tmp/build-metrics && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode,start,$(date +%s)" > /tmp/build-metrics/stage-11-base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode.csv && \
+    echo "Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode) started at $(date)" && \
+    du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-start.txt && \
+    echo "Initial size: $(cat /tmp/build-metrics/stage-11-size-start.txt)"
+
+# Switch to the 'me' user for VS Code server installation
+USER me
+
+# ---------------------------------------------------------------------------
+# VS Code Server Installation
+# ---------------------------------------------------------------------------
+# Download and install VS Code server for detected architecture using update API
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    mkdir -p /home/me/.vscode-server/bin; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "$ARCH" in \
+      amd64) VSCODE_ARCH="x64" ;; \
+      arm64) VSCODE_ARCH="arm64" ;; \
+      *) echo "Unsupported arch for VS Code Server: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
+    esac; \
+    echo "Installing VS Code server (${VSCODE_ARCH})..."; \
+    VSCODE_URL="https://update.code.visualstudio.com/latest/server-linux-${VSCODE_ARCH}/stable"; \
+    echo "VS Code server URL: ${VSCODE_URL}"; \
+    curl -fsSL "${VSCODE_URL}" -o /tmp/vscode-server.tar.gz; \
+    tar -xzf /tmp/vscode-server.tar.gz -C /home/me/.vscode-server/bin --strip-components=1; \
+    rm /tmp/vscode-server.tar.gz
+
+# ---------------------------------------------------------------------------
+# VS Code Extensions Pre-installation
+# ---------------------------------------------------------------------------
+# Use the VS Code CLI to install extensions properly
+# This approach is more reliable than manually downloading VSIX files
+# ---------------------------------------------------------------------------
+RUN /home/me/.vscode-server/bin/bin/code-server \
+        --install-extension REditorSupport.r \
+        --install-extension REditorSupport.r-syntax \
+        --install-extension kylebarron.stata-enhanced \
+        --install-extension dnut.rewrap-revived \
+        --install-extension mechatroner.rainbow-csv \
+        --install-extension GrapeCity.gc-excelviewer \
+        --install-extension tomoki1207.pdf \
+        --install-extension bierner.markdown-mermaid \
+        --install-extension atlassian.atlascode \
+        --install-extension GitHub.vscode-pull-request-github \
+        --user-data-dir /home/me/.vscode-server \
+        --extensions-dir /home/me/.vscode-server/extensions \
+        || echo "Some extensions may have failed to install but continuing..."
+
+# Set correct ownership for VS Code server files
+RUN chown -R me:me /home/me/.vscode-server
+
+# Switch back to root for any remaining system-level setup
+USER root
+
+# ---------------------------------------------------------------------------
+# Build Metrics: Stage 11 End
+# ---------------------------------------------------------------------------
+RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print sum}' > /tmp/build-metrics/stage-11-size-end.txt && \
+    echo "$(date '+%Y-%m-%d %H:%M:%S %Z'),base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode,end,$(date +%s)" >> /tmp/build-metrics/stage-11-base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode.csv && \
+    echo "Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode) completed at $(date)" && \
+    echo "Size change: $(cat /tmp/build-metrics/stage-11-size-start.txt) -> $(cat /tmp/build-metrics/stage-11-size-end.txt)"
+
 
 # ===========================================================================
 # STAGE 12: FULL DEVELOPMENT ENVIRONMENT          (full)
@@ -1441,7 +1456,7 @@ RUN du -sb /usr /opt /home /root /var 2>/dev/null | awk '{sum+=$1} END {print su
 # with no --target flag. Currently empty but ready for additional setup.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-vscode-tex-pandoc-haskell-crossref-plus-py-r-pak AS full
+FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full
 
 # ---------------------------------------------------------------------------
 # Build Metrics: Stage 12 Start
