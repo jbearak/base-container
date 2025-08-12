@@ -1208,7 +1208,11 @@ RUN set -e; \
     rm cmdstan.tar.gz; \
     # Build CmdStan (this compiles the Stan compiler and math library)
     echo "Building CmdStan (this may take several minutes)..."; \
-    make build -j$(nproc); \
+    # Use limited parallelism to avoid memory issues and build timeouts
+    NPROC=$(nproc); \
+    JOBS=$((NPROC > 4 ? 4 : NPROC)); \
+    echo "Using ${JOBS} parallel jobs for CmdStan build (out of ${NPROC} available cores)"; \
+    make build -j${JOBS}; \
     # Set environment variable for CmdStan path
     echo "export CMDSTAN=/opt/cmdstan" >> /etc/environment; \
     # Verify installation
