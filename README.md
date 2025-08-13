@@ -352,8 +352,8 @@ This repository now supports two top-level container targets optimized for diffe
 
 - r-container: a lightweight R-focused image for CI/CD
   - Base: Ubuntu + essential build tools only
-  - Includes: R 4.x, pak, CmdStan, JAGS, and packages from R_packages.txt
-  - Skips: Neovim, LaTeX toolchain, Pandoc, Haskell, Python, VS Code server
+  - Includes: R 4.x, pak, JAGS, and packages from R_packages.txt (Stan packages excluded)
+  - Skips: Neovim, LaTeX toolchain, Pandoc, Haskell, Python, VS Code server, CmdStan
   - Working directory: /workspace, ENV CI=true
   - Best for: GitHub Actions / Bitbucket Pipelines / other CI runners
 

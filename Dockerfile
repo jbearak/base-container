@@ -1192,7 +1192,6 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     mkdir -p "$TMPDIR"; \
     echo "R package installation environment configured"; \
     # Install pak from CRAN
-    # Install pak from CRAN
     R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
     # Verify pak installation
     R -e "library(pak); cat('pak version:', as.character(packageVersion('pak')), '\n')"; \
@@ -1433,8 +1432,9 @@ COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/R_packages.txt
 RUN set -e; \
     chmod +x /tmp/install_r_packages.sh && \
-    # Exclude Stan-related packages in CI image
-    grep -vi "stan" /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
+    # Exclude specific Stan packages by exact name
+    grep -E '^(rstan|cmdstanr|rstanarm|brms|shinystan)$' /tmp/R_packages.txt > /tmp/stan_packages.txt || true; \
+    grep -vf /tmp/stan_packages.txt /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
     # Set up environment for R package installation
     R_VERSION=$(R --version | head -n1 | sed "s/R version \([0-9.]*\).*/\1/"); \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
@@ -1449,7 +1449,7 @@ RUN set -e; \
     # Purge build toolchains and clean caches
     apt-get purge -y build-essential g++ gcc make gfortran cpp libstdc++-*-dev libgcc-*-dev || true; \
     apt-get autoremove -y; \
-    rm -rf /tmp/R-pkg-cache /tmp/install_r_packages.sh /tmp/R_packages.txt /tmp/R_packages.filtered.txt /root/.cache /home/me/.cache /var/cache/apt/* /var/lib/apt/lists/*
+    rm -rf /tmp/R-pkg-cache /tmp/install_r_packages.sh /tmp/R_packages.txt /tmp/R_packages.filtered.txt /tmp/stan_packages.txt /root/.cache /home/me/.cache /var/cache/apt/* /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
 # Create minimal CI-focused .Rprofile
