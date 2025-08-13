@@ -1189,6 +1189,7 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     export R_COMPILE_PKGS=1; \
     export R_KEEP_PKG_SOURCE=yes; \
     export TMPDIR=/tmp/R-pkg-cache; \
+    mkdir -p "$TMPDIR"; \
     echo "R package installation environment configured"; \
     # Install pak from CRAN
     R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
@@ -1312,10 +1313,10 @@ USER root
 # ---------------------------------------------------------------------------
 RUN set -e; \
     # Add CRAN GPG key
-    curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marmalade.gpg | \
-        gpg --dearmor -o /usr/share/keyrings/cran-archive-keyring.gpg; \
+    curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | \
+        gpg --dearmor -o /etc/apt/keyrings/cran.gpg; \
     # Add CRAN repository
-    echo "deb [signed-by=/usr/share/keyrings/cran-archive-keyring.gpg] https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" > \
+    echo "deb [signed-by=/etc/apt/keyrings/cran.gpg] https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" > \
         /etc/apt/sources.list.d/cran.list; \
     # Update package list and install R
     apt-get update -qq && \
@@ -1413,8 +1414,7 @@ FCFLAGS=-O3 -mtune=native
 # Use all available cores for compilation (adjust if needed)
 MAKEFLAGS=-j$(nproc)
 EOF
-    chown -R me:me /home/me/.R; \
-    echo "✅ R compilation configuration applied"
+RUN chown -R me:me /home/me/.R && echo "✅ R compilation configuration applied"
 
 # ---------------------------------------------------------------------------
 # R package installation (same as stage 10)
@@ -1466,7 +1466,7 @@ RUN set -e; \
     export TMPDIR=/tmp/R-pkg-cache; \
     mkdir -p "$TMPDIR"; \
     echo "Installing R packages from R_packages.txt..."; \
-    /tmp/install_r_packages.sh /tmp/R_packages.txt; \
+    /tmp/install_r_packages.sh --packages-file /tmp/R_packages.txt; \
     echo "✅ R package installation completed"; \
     # Clean up
     rm -rf /tmp/R-pkg-cache /tmp/install_r_packages.sh /tmp/R_packages.txt
