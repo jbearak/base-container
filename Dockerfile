@@ -1482,7 +1482,7 @@ RUN set -e; \
         linux-libc-dev \
         manpages-dev \
         # Remove development headers (but keep runtime libraries)
-        libblas-dev \
+        libblas-dev \  # Remove development headers
         liblapack-dev \
         libxml2-dev \
         libcurl4-openssl-dev \
