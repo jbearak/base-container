@@ -122,6 +122,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # - Geospatial libraries: sf, terra, raster packages need GDAL/PROJ/GEOS at runtime
 # - The -dev packages provide headers for compilation AND runtime libraries
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN apt-get update -qq && apt-get -y upgrade && \
     apt-get update -qq && \
     apt-get install -y --no-install-recommends \
@@ -200,6 +201,7 @@ RUN apt-get update -qq && apt-get -y upgrade && \
 # ---------------------------------------------------------------------------
 # Install hadolint (Dockerfile linter) from GitHub releases
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     case "$ARCH" in \
@@ -243,6 +245,7 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 # Install eza (modern replacement for ls) using official Debian/Ubuntu repo
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     mkdir -p /etc/apt/keyrings; \
     wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | \
@@ -257,6 +260,7 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 # Install glow (terminal markdown renderer) from GitHub releases
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     case "$ARCH" in \
@@ -290,6 +294,7 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 # Install delta (syntax-highlighting pager for git) from GitHub releases
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     case "$ARCH" in \
@@ -298,7 +303,7 @@ RUN set -e; \
       *) echo "Unsupported arch for delta: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
     esac; \
     # Get latest release info from GitHub API
-    RELEASE_INFO=$(curl -s https://api.github.com/repos/dandavison/delta/releases/latest); \
+    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/dandavison/delta/releases/latest); \
     DELTA_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing delta version: ${DELTA_VERSION}"; \
     # Construct URL for .deb package
@@ -319,6 +324,7 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 # Install difftastic (structural diff tool) from GitHub releases
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     case "$ARCH" in \
@@ -327,7 +333,7 @@ RUN set -e; \
       *) echo "Unsupported arch for difftastic: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
     esac; \
     # Get latest release info from GitHub API
-    RELEASE_INFO=$(curl -s https://api.github.com/repos/Wilfred/difftastic/releases/latest); \
+    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/Wilfred/difftastic/releases/latest); \
     DIFFT_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing difftastic version: ${DIFFT_VERSION}"; \
     # Construct URL for tarball (difftastic provides tar.gz, not .deb)
@@ -351,6 +357,7 @@ RUN set -e; \
 # Install latest Go from official source (Ubuntu's version is outdated)
 # ---------------------------------------------------------------------------
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# shellcheck-check
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     case "$ARCH" in \
@@ -386,6 +393,7 @@ ENV PATH=$PATH:/usr/local/go/bin
 # ---------------------------------------------------------------------------
 # Install latest stable Neovim binary
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     case "$ARCH" in \
@@ -426,6 +434,7 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 # Install zoxide from GitHub releases
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     case "$ARCH" in \
@@ -453,6 +462,7 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 # Install Zsh plugins via git clone of latest release tags
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     mkdir -p /usr/local/share/zsh/plugins; \
     # ----------------------------- zsh-completions ---------------------------
@@ -504,10 +514,12 @@ ENV LC_ALL=en_US.UTF-8
 # ---------------------------------------------------------------------------
 
 # Step 1: Align groups commonly conflicting with macOS host
+# shellcheck-check
 RUN groupmod -g 2020 dialout || true; \
     groupmod -g 20 staff || true
 
 # Step 2: Create 'me' user and group as aliases of 'vscode', and move home to /home/me
+# shellcheck-check
 RUN set -e; \
     VS_UID="$(id -u vscode)"; \
     VS_GID="$(id -g vscode)"; \
@@ -592,6 +604,7 @@ RUN chown -R me:me /home/me/.tmux.conf \
 # ---------------------------------------------------------------------------
 
 # Install npm packages globally (requires root for /usr/local access)
+# shellcheck-check
 RUN npm config set prefix '/usr/local' && \
     npm install -g yarn tree-sitter-cli
 
@@ -601,11 +614,13 @@ USER me
 # Set up Go environment and install Go tools
 ENV GOPATH=/home/me/go
 ENV PATH=$PATH:$GOPATH/bin:/usr/local/go/bin
+# shellcheck-check
 RUN mkdir -p $GOPATH/bin && \
     go install github.com/cweill/gotests/gotests@latest && \
     go install golang.org/x/tools/gopls@latest
 
 # Install Python development tools for nvim
+# shellcheck-check
 RUN pip3 install --user --break-system-packages \
     pynvim \
     black \
@@ -617,10 +632,12 @@ RUN pip3 install --user --break-system-packages \
 ENV PATH=$PATH:/home/me/.local/bin
 
 # Create fd symlink for telescope compatibility (Ubuntu installs as fdfind)
+# shellcheck-check
 RUN mkdir -p /home/me/.local/bin && \
     ln -sf $(which fdfind) /home/me/.local/bin/fd 2>/dev/null || echo "fd already available"
 
 # Install fzf (fuzzy finder) for telescope.nvim
+# shellcheck-check
 RUN git clone --depth 1 https://github.com/junegunn/fzf.git /home/me/.fzf && \
     /home/me/.fzf/install --key-bindings --completion --no-update-rc
 
@@ -667,6 +684,7 @@ FROM base-nvim AS base-nvim-tex
 # This doesn't install the full TeX Live distribution, to keep the image
 # size down, though this still contributes a lot to the final image size.
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     apt-get update -qq && \
     apt-get install -y --no-install-recommends \
@@ -726,6 +744,7 @@ FROM base-nvim-tex AS base-nvim-tex-pandoc
 #    dependencies are resolved automatically.
 # 4. Clean up apt caches and the temporary .deb.
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     # ---------------------------------------------------------------
     # 1. Detect architecture
@@ -737,7 +756,7 @@ RUN set -e; \
     RELEASE_INFO=$(curl -s https://api.github.com/repos/jgm/pandoc/releases/latest); \
     PANDOC_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing Pandoc version: ${PANDOC_VERSION}"; \
-    PANDOC_DEB_URL="$( \
+    PANDOC_DEB_URL="$(
       echo "$RELEASE_INFO" | \
       grep browser_download_url | \
       grep "\-${ARCH}\\.deb" | \
@@ -752,9 +771,9 @@ RUN set -e; \
       echo "✅ Pandoc ${PANDOC_VERSION} .deb downloaded and verified"; \
       apt-get install -y /tmp/pandoc.deb; \
       rm /tmp/pandoc.deb; \
-    else \
+    else 
       echo "No .deb asset found for ${ARCH}. Falling back to tarball."; \
-      PANDOC_TAR_URL="$( \
+      PANDOC_TAR_URL="$(
         echo "$RELEASE_INFO" | \
         grep browser_download_url | \
         grep "linux-${ARCH}\\.tar.gz" | \
@@ -788,6 +807,7 @@ FROM base-nvim-tex-pandoc AS base-nvim-tex-pandoc-haskell
 # ---------------------------------------------------------------------------
 # Haskell Stack installation
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     echo "Installing Haskell build dependencies..."; \
     apt-get update -qq && \
@@ -848,6 +868,7 @@ FROM base-nvim-tex-pandoc-haskell AS base-nvim-tex-pandoc-haskell-crossref
 # ---------------------------------------------------------------------------
 # Install pandoc-crossref from GitHub releases or build from source
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     echo "🔍 DEBUG: Detected architecture: $ARCH"; \
@@ -928,6 +949,7 @@ RUN set -e; \
 FROM base-nvim-tex-pandoc-haskell-crossref AS base-nvim-tex-pandoc-haskell-crossref-plus
 
 # Install additional LaTeX packages (as root for system-level installation)
+# shellcheck-check
 RUN set -e; \
     # First try to install soul directly from system packages
     apt-get update -qq && \
@@ -951,6 +973,7 @@ USER me
 
 # Set up user TEXMF directory and install soul.sty
 ENV TEXMFHOME=/home/me/texmf
+# shellcheck-check
 RUN set -e; \
     # Check if soul.sty is available from system packages first
     if ! kpsewhich soul.sty > /dev/null 2>&1; then \
@@ -995,6 +1018,7 @@ USER root
 # The deadsnakes PPA provides the latest Python versions for Ubuntu.
 # We install Python 3.13 and let it manage the pip installation.
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     echo "Adding deadsnakes PPA for Python 3.13..."; \
     apt-get update -qq && \
@@ -1049,6 +1073,7 @@ USER root
 #   4. Update package lists to include CRAN packages
 #   5. Install r-base (R interpreter) and r-base-dev (headers for compiling)
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         software-properties-common \
@@ -1073,6 +1098,7 @@ RUN apt-get update -qq && \
 # the rstan R package to work properly. CmdStan provides the Stan compiler
 # and runtime that rstan uses behind the scenes.
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     echo "Installing CmdStan..."; \
     # Create directory for CmdStan
@@ -1177,6 +1203,7 @@ USER root
 ARG DEBUG_PACKAGES=false
 
 # Set up architecture-segregated site library paths
+# shellcheck-check
 RUN set -e; \
     # Detect R version and architecture for segregated libraries
     R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
@@ -1196,6 +1223,7 @@ RUN set -e; \
     echo "✅ R site library segregation configured with compatibility symlink"
 
 # Install pak with BuildKit cache mounts for optimal performance
+# shellcheck-check
 RUN --mount=type=cache,target=/root/.cache/R/pak \
     --mount=type=cache,target=/tmp/R-pkg-cache \
     --mount=type=cache,target=/tmp/downloaded_packages \
@@ -1225,6 +1253,7 @@ COPY R_packages.txt /tmp/packages.txt
 #   - pak cache: Avoids re-downloading package metadata
 #   - compilation cache: Reuses compiled objects across builds  
 #   - downloaded packages: Caches source packages and binaries
+# shellcheck-check
 RUN --mount=type=cache,target=/root/.cache/R/pak \
     --mount=type=cache,target=/tmp/R-pkg-cache \
     --mount=type=cache,target=/tmp/downloaded_packages \
@@ -1266,6 +1295,7 @@ USER me
 # ---------------------------------------------------------------------------
 # Download and install VS Code server for detected architecture using update API
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     mkdir -p /home/me/.vscode-server/bin; \
     ARCH="$(dpkg --print-architecture)"; \
@@ -1339,6 +1369,7 @@ RUN groupmod -g 2020 dialout || true;     groupmod -g 20 staff || true;     set 
 # Ubuntu's default R version is often outdated. We add the official CRAN
 # repository to get the latest stable R version.
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     # Add CRAN GPG key
     curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | \
@@ -1377,6 +1408,7 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 # JAGS installation (same as stage 9)
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     apt-get update -qq && \
     apt-get install -y --no-install-recommends jags && \
@@ -1386,6 +1418,7 @@ RUN set -e; \
 # ---------------------------------------------------------------------------
 # R configuration for optimized package compilation (same as stage 9)
 # ---------------------------------------------------------------------------
+# shellcheck-check
 RUN set -e; \
     mkdir -p /home/me/.R; \
     cat > /home/me/.R/Makevars << 'EOF'
@@ -1411,6 +1444,7 @@ RUN chown -R me:me /home/me/.R && echo "✅ R compilation configuration applied"
 USER root
 
 # Set up R library directory with proper segregation
+# shellcheck-check
 RUN set -e; \
     R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
@@ -1427,6 +1461,7 @@ RUN set -e; \
     echo "✅ R site library segregation configured with compatibility symlink"
 
 # Install pak and R packages
+# shellcheck-check
 RUN set -e; \
     # Set up environment for R package installation
     R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
@@ -1444,6 +1479,7 @@ RUN set -e; \
 # Copy and run R package installation script with aggressive optimization
 COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/R_packages.txt
+# shellcheck-check
 RUN set -e; \
     chmod +x /tmp/install_r_packages.sh && \
     # SELECTIVE EXCLUSION: Only exclude Stan packages (no CmdStan in CI image)
@@ -1451,7 +1487,7 @@ RUN set -e; \
     grep -vf /tmp/excluded_packages.txt /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
     echo "Excluded packages (Stan only - no CmdStan in CI image):"; \
     cat /tmp/excluded_packages.txt || echo "None"; \
-    \
+     \
     # Set up environment for R package installation
     R_VERSION=$(R --version | head -n1 | sed "s/R version \([0-9.]*\).*/\1/"); \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
@@ -1460,12 +1496,12 @@ RUN set -e; \
     export MAKEFLAGS="-j$(nproc)"; \
     export TMPDIR=/tmp/R-pkg-cache; \
     mkdir -p "$TMPDIR"; \
-    \
+     \
     # Install R packages
     echo "Installing R packages (Stan packages excluded - no CmdStan in CI image)..."; \
     /tmp/install_r_packages.sh --packages-file /tmp/R_packages.filtered.txt; \
     echo "✅ R package installation completed"; \
-    \
+     \
     # AGGRESSIVE BUILD TOOLS REMOVAL (major space savings)
     echo "🗑️  Removing build tools and development packages..."; \
     # Remove development headers (but keep runtime libraries)
@@ -1493,11 +1529,11 @@ RUN set -e; \
         libgeos-dev \
         libudunits2-dev \
         || true; \
-    \
+     \
     # Autoremove orphaned packages
     apt-get autoremove -y; \
     apt-get clean; \
-    \
+     \
     # REINSTALL ESSENTIAL RUNTIME LIBRARIES (removed during dev package purge)
     echo "🔧 Reinstalling essential runtime libraries..."; \
     apt-get update -qq && \
@@ -1506,14 +1542,14 @@ RUN set -e; \
         libudunits2-data \
         && \
     apt-get clean && rm -rf /var/lib/apt/lists/*; \
-    \
+     \
     # AGGRESSIVE DOCUMENTATION CLEANUP (major space saver)
     echo "🗑️  Removing R package documentation..."; \
     find /usr/lib/R -name "*.pdf" -delete || true; \
     find /usr/lib/R -name "*.html" -delete || true; \
     find /usr/lib/R -name "doc" -type d -exec rm -rf {} \; || true; \
     find /usr/lib/R -name "html" -type d -exec rm -rf {} \; || true; \
-    \
+     \
     # Clean R packages documentation
     find /usr/local/lib/R -name "doc" -type d -exec rm -rf {} \; || true; \
     find /usr/local/lib/R -name "html" -type d -exec rm -rf {} \; || true; \
@@ -1523,7 +1559,7 @@ RUN set -e; \
     find /usr/local/lib/R -name "NEWS*" -delete || true; \
     find /usr/local/lib/R -name "README*" -delete || true; \
     find /usr/local/lib/R -name "CHANGELOG*" -delete || true; \
-    \
+     \
     # CACHE AND TEMPORARY FILE CLEANUP
     rm -rf \
         /tmp/R-pkg-cache \
@@ -1539,7 +1575,7 @@ RUN set -e; \
         /tmp/* \
         /var/tmp/* \
         || true; \
-    \
+     \
     echo "✅ Aggressive optimization completed"
 
 # ---------------------------------------------------------------------------
@@ -1565,6 +1601,7 @@ RUN cp /home/me/.Rprofile /root/.Rprofile
 # Add R shell configuration to both bash and zsh
 # ---------------------------------------------------------------------------
 COPY r-shell-config /tmp/r-shell-config
+# shellcheck-check
 RUN echo "" >> /home/me/.bashrc && \
     cat /tmp/r-shell-config >> /home/me/.bashrc && \
     cat /tmp/r-shell-config > /home/me/.zshrc && \
@@ -1592,6 +1629,7 @@ USER root
 # Copy and apply shell configuration
 COPY dotfiles/shell-common /tmp/shell-common
 COPY dotfiles/zshrc_appends /tmp/zshrc_appends
+# shellcheck-check
 RUN cat /tmp/shell-common >> /home/me/.bashrc && \
     cat /tmp/shell-common >> /home/me/.zshrc && \
     # Append Zsh-specific plugin config
@@ -1620,3 +1658,25 @@ CMD ["/bin/zsh", "-l"]
 # Switch to the 'me' user for the final container
 USER me
 
+# ===========================================================================
+# LINT STAGE
+# ===========================================================================
+# This stage is for linting the Dockerfile itself. It uses shellcheck to
+# check the shell scripts embedded in the RUN instructions.
+# ---------------------------------------------------------------------------
+FROM base AS lint
+
+WORKDIR /tmp
+
+COPY Dockerfile .
+
+RUN \
+    # Extract shell scripts from RUN instructions marked with # shellcheck-check
+    awk ' \
+        BEGIN { out=0; } \
+        /^# shellcheck-check/ { out=1; next; } \
+        /^RUN/ { if (out) { sub(/^RUN[[:space:]]*/, ""); print > "scripts.sh"; out=0; } } \
+        /\$/ { if (out) { print >> "scripts.sh"; } } \
+    ' Dockerfile && \
+    # Run shellcheck on the extracted scripts
+    shellcheck scripts.sh
