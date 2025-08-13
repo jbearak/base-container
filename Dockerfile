@@ -1,1 +1,1 @@
-$(cat /tmp/optimized_dockerfile.txt)
+$(cat /tmp/current_dockerfile.txt | sed '/libcairo2-dev/d; /libgtk2.0-dev/d; /xvfb/d; /xauth/d; /xfonts-base/d; /libfontconfig1-dev/d; /libfreetype6-dev/d; /libfribidi-dev/d; /libharfbuzz-dev/d; /libjpeg-dev/d; /libpng-dev/d; /libtiff5-dev/d; /libnode-dev/d; /htop/d' | sed 's/# For system monitoring and process management/# REMOVED: Graphics/X11 packages for CI optimization/' | sed 's/# Additional dependencies for specific R packages/# Essential dependencies for R packages (graphics/X11 removed)/')
