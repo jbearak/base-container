@@ -391,3 +391,16 @@ Reference the published image in your project's .devcontainer/devcontainer.json:
 - Both targets install R packages using pak based on R_packages.txt; the set is shared so R behavior is consistent.
 - The r-container target may install additional apt packages (e.g., pandoc) via pak when needed by R packages.
 - The legacy stage name full remains available for backward compatibility and aliases to full-container.
+
+
+
+### r-container (slim CI image)
+
+This stage is designed for CI/CD. It intentionally excludes heavy toolchains and developer tools to keep the image small and fast:
+- No CmdStan; Stan model compilation is not supported in this image
+- Stan-related R packages are excluded by default during installation
+- Compilers (g++, gcc, gfortran, make) are installed only temporarily for building R packages, then purged
+- Not included: LaTeX, Neovim, pandoc-crossref, Go toolchain, Python user tools, and various CLI utilities present in full-container
+- Aggressive cleanup of caches, man pages, docs, and R help files
+
+If you need to compile Stan models, use the full-container image or a custom derivative.

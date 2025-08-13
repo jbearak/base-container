@@ -1192,6 +1192,7 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     mkdir -p "$TMPDIR"; \
     echo "R package installation environment configured"; \
     # Install pak from CRAN
+    # Install pak from CRAN
     R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
     # Verify pak installation
     R -e "library(pak); cat('pak version:', as.character(packageVersion('pak')), '\n')"; \
@@ -1301,9 +1302,11 @@ USER root
 # components: Ubuntu base + R + R packages + minimal configuration.
 # ---------------------------------------------------------------------------
 
-FROM base AS r-container
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS r-container
 
 USER root
+RUN groupmod -g 2020 dialout || true;     groupmod -g 20 staff || true;     set -e;     VS_UID="$(id -u vscode)";     VS_GID="$(id -g vscode)";     VS_PRIMARY_GROUP_NAME="$(getent group "${VS_GID}" | cut -d: -f1)";     VS_GROUPS="$(id -nG vscode | tr ' ' ',')";     if ! getent group me > /dev/null 2>&1; then groupadd -o -g "${VS_GID}" me || true; fi;     if ! id -u me > /dev/null 2>&1; then useradd -o -u "${VS_UID}" -g "${VS_GID}" -M -d /home/me -s /bin/zsh me; fi;     if [ -d /home/vscode ] && [ ! -e /home/me ]; then mv /home/vscode /home/me; fi;     usermod -d /home/me vscode;     usermod -d /home/me me;     for my_grp in $(echo "${VS_GROUPS}" | tr ',' ' '); do       if [ "${my_grp}" = "${VS_PRIMARY_GROUP_NAME}" ]; then continue; fi;       usermod -aG "${my_grp}" me || true;     done;     chown -R "${VS_UID}:${VS_GID}" /home/me || true
+
 
 # ---------------------------------------------------------------------------
 # R installation from CRAN (same as stage 9)
@@ -1356,34 +1359,7 @@ RUN set -e; \
         && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# ---------------------------------------------------------------------------
-# CmdStan installation (same as stage 9)
-# ---------------------------------------------------------------------------
-RUN set -e; \
-    echo "Installing CmdStan..."; \
-    mkdir -p /opt/cmdstan; \
-    cd /opt/cmdstan; \
-    # Get the latest CmdStan release info from GitHub API
-    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/stan-dev/cmdstan/releases/latest); \
-    CMDSTAN_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
-    # Remove 'v' prefix from version for filename (e.g., v2.36.0 -> 2.36.0)
-    CMDSTAN_VERSION_CLEAN=$(echo "$CMDSTAN_VERSION" | sed 's/^v//'); \
-    echo "Installing CmdStan version: ${CMDSTAN_VERSION} (filename version: ${CMDSTAN_VERSION_CLEAN})"; \
-    # Construct URL for tarball (CmdStan uses version without 'v' prefix in filename)
-    CMDSTAN_URL="https://github.com/stan-dev/cmdstan/releases/download/${CMDSTAN_VERSION}/cmdstan-${CMDSTAN_VERSION_CLEAN}.tar.gz"; \
-    echo "Downloading CmdStan tarball from: ${CMDSTAN_URL}"; \
-    # Download tarball (CmdStan doesn't provide checksums, so we generate SHA256 for transparency)
-    curl -fsSL "$CMDSTAN_URL" -o cmdstan.tar.gz; \
-    CMDSTAN_SHA256=$(sha256sum cmdstan.tar.gz | cut -d' ' -f1); \
-    echo "CmdStan SHA256: ${CMDSTAN_SHA256}"; \
-    # Extract and build
-    tar -xzf cmdstan.tar.gz --strip-components=1; \
-    rm cmdstan.tar.gz; \
-    # Build CmdStan (this compiles the Stan math library and creates the cmdstan binary)
-    make build -j$(nproc); \
-    # Set ownership and permissions
-    chown -R me:me /opt/cmdstan; \
-    echo "✅ CmdStan installed successfully"
+# CmdStan removed in r-container (CI image). Use full-container if you need Stan compilation.
 
 # ---------------------------------------------------------------------------
 # JAGS installation (same as stage 9)
@@ -1457,19 +1433,23 @@ COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/R_packages.txt
 RUN set -e; \
     chmod +x /tmp/install_r_packages.sh && \
+    # Exclude Stan-related packages in CI image
+    grep -vi "stan" /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
     # Set up environment for R package installation
-    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_VERSION=$(R --version | head -n1 | sed "s/R version \([0-9.]*\).*/\1/"); \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
     SITE_LIB_DIR="/usr/local/lib/R/site-library-${R_MAJOR_MINOR}"; \
     export R_LIBS_SITE="$SITE_LIB_DIR"; \
     export MAKEFLAGS="-j$(nproc)"; \
     export TMPDIR=/tmp/R-pkg-cache; \
     mkdir -p "$TMPDIR"; \
-    echo "Installing R packages from R_packages.txt..."; \
-    /tmp/install_r_packages.sh --packages-file /tmp/R_packages.txt; \
+    echo "Installing R packages (stan packages excluded)..."; \
+    /tmp/install_r_packages.sh --packages-file /tmp/R_packages.filtered.txt; \
     echo "✅ R package installation completed"; \
-    # Clean up
-    rm -rf /tmp/R-pkg-cache /tmp/install_r_packages.sh /tmp/R_packages.txt
+    # Purge build toolchains and clean caches
+    apt-get purge -y build-essential g++ gcc make gfortran cpp libstdc++-*-dev libgcc-*-dev || true; \
+    apt-get autoremove -y; \
+    rm -rf /tmp/R-pkg-cache /tmp/install_r_packages.sh /tmp/R_packages.txt /tmp/R_packages.filtered.txt /root/.cache /home/me/.cache /var/cache/apt/* /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
 # Create minimal CI-focused .Rprofile
