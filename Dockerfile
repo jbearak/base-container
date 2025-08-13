@@ -1461,7 +1461,7 @@ RUN set -e; \
         libc6-dev \
         linux-libc-dev \
         manpages-dev \
-        # Remove development headers
+        # Remove development headers (but keep runtime libraries)
         libblas-dev \
         liblapack-dev \
         libxml2-dev \
@@ -1477,6 +1477,15 @@ RUN set -e; \
     # Autoremove orphaned packages
     apt-get autoremove -y; \
     apt-get clean; \
+    \
+    # REINSTALL ESSENTIAL RUNTIME LIBRARIES (removed during dev package purge)
+    echo "🔧 Reinstalling essential runtime libraries..."; \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        libudunits2-0 \
+        libudunits2-data \
+        && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*; \
     \
     # AGGRESSIVE DOCUMENTATION CLEANUP (major space saver)
     echo "🗑️  Removing R package documentation..."; \
