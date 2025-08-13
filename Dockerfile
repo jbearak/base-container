@@ -1,11 +1,14 @@
 # ===========================================================================
-# MULTI-STAGE R base-container IMAGE - OPTIMIZED FOR DOCKER LAYER CACHING
+# MULTI-STAGE R CONTAINER IMAGE - OPTIMIZED FOR DOCKER LAYER CACHING
 # ===========================================================================
-# Purpose   : Build a containerized R development environment optimized for
-#             VS Code and the Dev Containers extension.  This Dockerfile uses
-#             a multi-stage approach optimized for Docker layer caching:
+# Purpose   : Build containerized R development environments optimized for
+#             different use cases. This Dockerfile uses a multi-stage approach
+#             optimized for Docker layer caching with two final targets:
 #
-#             Stage 1 (base)               : Setup Ubuntu with basic tools.
+#             r-container: Lightweight for CI/CD (GitHub Actions, Bitbucket Pipelines)
+#             full-container: Complete development environment
+#
+#             Stage 1 (base)               : Setup Ubuntu with basic tools + jq/yq.
 #             Stage 2 (base-nvim)          : Initialize and bootstrap Neovim plugins using lazy.nvim.
 #             Stage 3 (base-nvim-tex)      : Add LaTeX tools for typesetting.
 #             Stage 4 (base-nvim-tex-pandoc): Add Pandoc to support typesetting from markdown.
@@ -16,7 +19,8 @@
 #             Stage 9 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r): Install R, CmdStan, and JAGS.
 #             Stage 10 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak): Install a comprehensive suite of R packages.
 #             Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode): Setup VS Code server with pre-installed extensions.
-#             Stage 12 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
+#             Stage 12 (full-container)    : Complete development environment (renamed from 'full').
+#             Stage 13 (r-container)       : Lightweight CI/CD container (branches from base).
 #
 #   • Start/end timestamps for build duration calculation
 #   • Filesystem usage before/after each stage
@@ -45,7 +49,8 @@
 #               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r .
 #               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak .
 #               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode .
-#               docker build --target full -t base-container:latest .
+#               docker build --target full-container -t full-container:latest .
+#               docker build --target r-container -t r-container:latest .
 #
 # ---------------------------------------------------------------------------
 
@@ -176,6 +181,14 @@ RUN apt-get update -qq && apt-get -y upgrade && \
         libmpfr-dev \
         bat \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Install jq and yq for JSON/YAML processing (needed for both containers)
+# ---------------------------------------------------------------------------
+RUN apt-get update -qq && apt-get install -y --no-install-recommends jq && \
+    wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && \
+    chmod +x /usr/local/bin/yq && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
 # Install hadolint (Dockerfile linter) from GitHub releases
@@ -1292,13 +1305,13 @@ USER root
 
 
 # ===========================================================================
-# STAGE 12: FULL DEVELOPMENT ENVIRONMENT          (full)
+# STAGE 12: FULL DEVELOPMENT ENVIRONMENT          (full-container)
 # ===========================================================================
-# This is the final stage that will be the default target when building
-# with no --target flag. Currently empty but ready for additional setup.
+# This is the complete development environment with all tools included.
+# Renamed from 'full' to be more descriptive.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full
+FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full-container
 
 USER root
 
@@ -1330,5 +1343,172 @@ CMD ["/bin/zsh", "-l"]
 # ---------------------------------------------------------------------------
 # Final User Switch
 # ---------------------------------------------------------------------------
+# Switch to the 'me' user for the final container
+USER me
+
+# ===========================================================================
+# STAGE 13: LIGHTWEIGHT R CONTAINER FOR CI/CD     (r-container)
+# ===========================================================================
+# This stage creates a lightweight container optimized for CI/CD pipelines
+# (GitHub Actions, Bitbucket Pipelines). It branches from the base stage
+# and includes only essential R packages and tools.
+# ---------------------------------------------------------------------------
+
+FROM base AS r-container
+
+# Switch to root for system package installation
+USER root
+
+# ---------------------------------------------------------------------------
+# R installation from CRAN (same as stage 9 but without CmdStan/JAGS)
+# ---------------------------------------------------------------------------
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+        dirmngr \
+        gnupg \
+        lsb-release && \
+    # Add CRAN repository key
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/cran_ubuntu_key.gpg && \
+    # Add CRAN repository manually (avoiding add-apt-repository issues)
+    echo "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" > /etc/apt/sources.list.d/cran.list && \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        r-base \
+        r-base-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# R compilation optimization (same as full container)
+# ---------------------------------------------------------------------------
+RUN mkdir -p /home/me/.R && \
+    echo 'MAKEFLAGS = -j$(nproc)' > /home/me/.R/Makevars && \
+    echo 'CXX = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CC = gcc -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX11 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX14 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX17 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXXFLAGS = -g -O2 -fPIC -pipe' >> /home/me/.R/Makevars && \
+    chown -R me:me /home/me/.R
+
+# ---------------------------------------------------------------------------
+# Install essential R packages with pak
+# ---------------------------------------------------------------------------
+# Set up architecture-segregated site library paths (same as full container)
+RUN set -e; \
+    # Detect R version and architecture for segregated libraries
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    TARGETARCH=$(dpkg --print-architecture); \
+    echo "Setting up R library for R ${R_MM} on ${TARGETARCH}"; \
+    # Create architecture-specific site library directory
+    SITE_LIB_DIR="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
+    mkdir -p "$SITE_LIB_DIR"; \
+    # Create compatibility symlink for current architecture
+    ln -sf "$SITE_LIB_DIR" "/opt/R/site-library/current"; \
+    # Update R site library configuration
+    echo "R_LIBS_SITE=\"$SITE_LIB_DIR\"" >> /etc/environment; \
+    echo "R library path configured: $SITE_LIB_DIR"; \
+    # Create compatibility symlink from standard R location
+    ln -sf "$SITE_LIB_DIR" "/usr/local/lib/R/site-library"; \
+    echo "✅ R site library segregation configured with compatibility symlink"
+
+# Install pak with BuildKit cache mounts for optimal performance
+RUN --mount=type=cache,target=/root/.cache/R/pak \
+    --mount=type=cache,target=/tmp/R-pkg-cache \
+    --mount=type=cache,target=/tmp/downloaded_packages \
+    set -e; \
+    echo "Installing pak package manager..."; \
+    # Set up environment for R package installation
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    TARGETARCH=$(dpkg --print-architecture); \
+    export R_LIBS_SITE="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
+    export R_COMPILE_PKGS=1; \
+    export R_KEEP_PKG_SOURCE=yes; \
+    export TMPDIR=/tmp/R-pkg-cache; \
+    echo "R package installation environment configured"; \
+    # Install pak from CRAN
+    R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
+    # Verify pak installation
+    R -e "library(pak); cat('pak version:', as.character(packageVersion('pak')), '\n')"; \
+    echo "✅ pak installed successfully"
+
+# Copy essential R packages list and install script
+COPY install_r_packages.sh /tmp/install_r_packages.sh
+COPY R_packages_essential.txt /tmp/packages.txt
+
+# Install essential R packages with BuildKit cache mounts for faster builds
+RUN --mount=type=cache,target=/root/.cache/R/pak \
+    --mount=type=cache,target=/tmp/R-pkg-cache \
+    --mount=type=cache,target=/tmp/downloaded_packages \
+    chmod +x /tmp/install_r_packages.sh && \
+    # Set up environment for R package installation
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    TARGETARCH=$(dpkg --print-architecture); \
+    export R_LIBS_SITE="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
+    export R_COMPILE_PKGS=1; \
+    export R_KEEP_PKG_SOURCE=yes; \
+    export TMPDIR=/tmp/R-pkg-cache; \
+    /tmp/install_r_packages.sh
+
+# ---------------------------------------------------------------------------
+# Aggressive cleanup for CI/CD optimization
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Performing aggressive cleanup for CI/CD optimization..."; \
+    # Remove packages not needed for CI
+    apt-get update -qq && \
+    apt-get remove -y --purge \
+        npm nodejs default-jdk python3-pip \
+        build-essential cmake autoconf automake libtool ninja-build pkg-config \
+        python3-dev libxml2-dev libcurl4-openssl-dev libssl-dev \
+        libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev \
+        libpng-dev libtiff5-dev libjpeg-dev libgdal-dev libproj-dev libgeos-dev \
+        libudunits2-dev libcairo2-dev libxt-dev libx11-dev libmagick++-dev \
+        librsvg2-dev libv8-dev libjq-dev libprotobuf-dev libnode-dev \
+        libsqlite3-dev libpq-dev libsasl2-dev libldap2-dev libgit2-dev \
+        libgsl-dev libmpfr-dev \
+        neovim tmux tree-sitter-cli fd-find bat shellcheck shfmt && \
+    # Keep gfortran - essential for R package ecosystem
+    apt-get autoremove -y && \
+    # Aggressive cleanup
+    rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* || true; \
+    rm -rf /root/.cache/* /home/me/.cache/* /var/cache/* || true; \
+    apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    echo "✅ Aggressive cleanup completed"
+
+# ---------------------------------------------------------------------------
+# Copy and apply shell configuration (dotfiles)
+# ---------------------------------------------------------------------------
+COPY dotfiles/shell-common /tmp/shell-common
+COPY dotfiles/zshrc_appends /tmp/zshrc_appends
+RUN cat /tmp/shell-common >> /home/me/.bashrc && \
+    cat /tmp/shell-common >> /home/me/.zshrc && \
+    # Append Zsh-specific plugin config
+    cat /tmp/zshrc_appends >> /home/me/.zshrc && \
+    echo 'R_LIBS_SITE="/usr/local/lib/R/site-library"' >> /etc/environment && \
+    chown me:me /home/me/.bashrc /home/me/.zshrc && \
+    rm /tmp/shell-common /tmp/zshrc_appends
+
+# ---------------------------------------------------------------------------
+# CI/CD optimizations
+# ---------------------------------------------------------------------------
+# Set CI-friendly environment variables
+ENV CI=true
+ENV DEBIAN_FRONTEND=noninteractive
+ENV R_LIBS_USER=/usr/local/lib/R/site-library
+
+# Create and set CI-standard working directory
+RUN mkdir -p /workspace && chown me:me /workspace
+WORKDIR /workspace
+
+# Keep shell as bash for RUN commands,
+# while making zsh the default for interactive sessions
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV SHELL=/bin/zsh
+CMD ["/bin/zsh", "-l"]
+
 # Switch to the 'me' user for the final container
 USER me
