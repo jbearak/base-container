@@ -16,7 +16,7 @@
 #             Stage 9 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r): Install R, CmdStan, and JAGS.
 #             Stage 10 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak): Install a comprehensive suite of R packages.
 #             Stage 11 (base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode): Setup VS Code server with pre-installed extensions.
-#             Stage 12 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
+#             Stage 12 (full-container)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
 #
 #   • Start/end timestamps for build duration calculation
 #   • Filesystem usage before/after each stage
@@ -1496,7 +1496,7 @@ ENV CI=true
 USER me
 
 # ===========================================================================
-# NEW: FULL-CONTAINER (complete development environment)
+# FULL-CONTAINER (complete development environment)
 # ===========================================================================
 # This stage creates the complete development environment with all tools
 # ---------------------------------------------------------------------------
@@ -1536,11 +1536,3 @@ CMD ["/bin/zsh", "-l"]
 # Switch to the 'me' user for the final container
 USER me
 
-# ===========================================================================
-# LEGACY: FULL (backward compatibility)
-# ===========================================================================
-# This stage provides backward compatibility for existing build scripts
-# that target 'full'. It's an alias for 'full-container'.
-# ---------------------------------------------------------------------------
-
-FROM full-container AS full

@@ -14,71 +14,89 @@ CACHE_MODE=""
 
 # Helpers to reduce duplication in docker run checks
 run_in_container() {
-    local my_cmd="$1"
-    docker run --rm "${CONTAINER_NAME}:${IMAGE_TAG}" bash -lc "$my_cmd"
+  local my_cmd="$1"
+  docker run --rm "${CONTAINER_NAME}:${IMAGE_TAG}" bash -lc "$my_cmd"
 }
 
 check_cmd() {
-    local my_description="$1"
-    local my_cmd="$2"
-    echo "$my_description"
-    if run_in_container "$my_cmd" >/dev/null 2>&1; then
-        return 0
-    else
-        echo "⚠️  ${my_description} failed"
-        return 1
-    fi
+  local my_description="$1"
+  local my_cmd="$2"
+  echo "$my_description"
+  if run_in_container "$my_cmd" >/dev/null 2>&1; then
+    return 0
+  else
+    echo "⚠️  ${my_description} failed"
+    return 1
+  fi
 }
 
 test_vscode() {
-    echo "📦 Testing VS Code server installation..."
-    run_in_container "ls -la /home/me/.vscode-server/bin/" || echo "⚠️  VS Code server test failed"
+  echo "📦 Testing VS Code server installation..."
+  run_in_container "ls -la /home/me/.vscode-server/bin/" || echo "⚠️  VS Code server test failed"
 }
 
 test_latex_basic() {
-    echo "📄 Testing LaTeX installation..."
-    run_in_container "xelatex --version | head -n 1" || echo "⚠️  XeLaTeX test failed"
+  echo "📄 Testing LaTeX installation..."
+  run_in_container "xelatex --version | head -n 1" || echo "⚠️  XeLaTeX test failed"
 }
 
 test_pandoc() {
-    echo "📄 Testing Pandoc installation and functionality..."
-    run_in_container "pandoc --version | head -n 1" || { echo "⚠️  Pandoc version test failed"; return 1; }
-    echo "📝 Running comprehensive Pandoc tests (docx, pdf, citations)..."
-    if docker run --rm -v "$(pwd)":/workspace -w /workspace "${CONTAINER_NAME}:${IMAGE_TAG}" ./test_pandoc.sh; then
-        return 0
-    else
-        echo "⚠️  Comprehensive Pandoc tests failed"
-        return 1
-    fi
+  echo "📄 Testing Pandoc installation and functionality..."
+  run_in_container "pandoc --version | head -n 1" || {
+    echo "⚠️  Pandoc version test failed"
+    return 1
+  }
+  echo "📝 Running comprehensive Pandoc tests (docx, pdf, citations)..."
+  if docker run --rm -v "$(pwd)":/workspace -w /workspace "${CONTAINER_NAME}:${IMAGE_TAG}" ./test_pandoc.sh; then
+    return 0
+  else
+    echo "⚠️  Comprehensive Pandoc tests failed"
+    return 1
+  fi
 }
 
 test_pandoc_plus() {
-    echo "🔍 Testing tlmgr soul package..."
-    run_in_container "kpsewhich soul.sty" || { echo "⚠️ soul.sty missing"; return 1; }
+  echo "🔍 Testing tlmgr soul package..."
+  run_in_container "kpsewhich soul.sty" || {
+    echo "⚠️ soul.sty missing"
+    return 1
+  }
 }
 
 test_python313() {
-    echo "🐍 Testing Python 3.13 installation..."
-    run_in_container "python3.13 --version" || { echo "⚠️ Python 3.13 not available"; return 1; }
-    run_in_container "python3.13 -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}\")'" || { echo "⚠️ Python 3.13 execution test failed"; return 1; }
+  echo "🐍 Testing Python 3.13 installation..."
+  run_in_container "python3.13 --version" || {
+    echo "⚠️ Python 3.13 not available"
+    return 1
+  }
+  run_in_container "python3.13 -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}\")'" || {
+    echo "⚠️ Python 3.13 execution test failed"
+    return 1
+  }
 }
 
 test_nvim_and_plugins() {
-    echo "📝 Testing nvim and plugins..."
-    run_in_container "nvim --version" || { echo "⚠️  nvim not available"; return 1; }
-    run_in_container "ls -la /home/me/.local/share/nvim/lazy/" || { echo "⚠️  lazy.nvim plugins not found"; return 1; }
+  echo "📝 Testing nvim and plugins..."
+  run_in_container "nvim --version" || {
+    echo "⚠️  nvim not available"
+    return 1
+  }
+  run_in_container "ls -la /home/me/.local/share/nvim/lazy/" || {
+    echo "⚠️  lazy.nvim plugins not found"
+    return 1
+  }
 }
 
 test_dev_tools() {
-    echo "🛠️  Testing development tools..."
-    local my_fail=0
-    check_cmd "Checking Yarn..." "yarn --version" || my_fail=1
-    check_cmd "Checking fd..." 'env PATH="/home/me/.local/bin:$PATH" fd --version' || my_fail=1
-    check_cmd "Checking eza..." "eza --version" || my_fail=1
-    # gotests does not support --version; -h confirms presence
-    check_cmd "Checking gotests..." 'env GOPATH="/home/me/go" PATH="/home/me/go/bin:/usr/local/go/bin:$PATH" gotests -h >/dev/null' || my_fail=1
-    check_cmd "Checking tree-sitter..." 'env PATH="/home/me/.local/bin:$PATH" tree-sitter --version' || my_fail=1
-    return $my_fail
+  echo "🛠️  Testing development tools..."
+  local my_fail=0
+  check_cmd "Checking Yarn..." "yarn --version" || my_fail=1
+  check_cmd "Checking fd..." 'env PATH="/home/me/.local/bin:$PATH" fd --version' || my_fail=1
+  check_cmd "Checking eza..." "eza --version" || my_fail=1
+  # gotests does not support --version; -h confirms presence
+  check_cmd "Checking gotests..." 'env GOPATH="/home/me/go" PATH="/home/me/go/bin:/usr/local/go/bin:$PATH" gotests -h >/dev/null' || my_fail=1
+  check_cmd "Checking tree-sitter..." 'env PATH="/home/me/.local/bin:$PATH" tree-sitter --version' || my_fail=1
+  return $my_fail
 }
 
 # Parse command line arguments
@@ -151,18 +169,18 @@ while [[ $# -gt 0 ]]; do
     echo "🖥️  Building image with VS Code server and extensions..."
     shift
     ;;
-
-  --full)
-    BUILD_TARGET="full"
-    IMAGE_TAG="full"
-    echo "🏗️  Building full image..."
-    shift
-    ;;
   --r-container)
     BUILD_TARGET="r-container"
     IMAGE_TAG="r-container"
     CONTAINER_NAME="r-container"
     echo "📊 Building lightweight R container for CI/CD..."
+    shift
+    ;;
+  --full)
+    BUILD_TARGET="full-container"
+    IMAGE_TAG="full-container"
+    CONTAINER_NAME="full-container"
+    echo "🏗️  Building complete development environment..."
     shift
     ;;
   --full-container)
@@ -219,9 +237,9 @@ while [[ $# -gt 0 ]]; do
     echo "  --base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak Build base + nvim + LaTeX + Pandoc + extra packages + Python 3.13 + R installation + R packages"
     echo "  --base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode Build base + nvim + LaTeX + Pandoc + extra packages + Python 3.13 + R installation + R packages + VS Code"
 
-    echo "  --full                               Build the full stage"
     echo "  --r-container                        Build lightweight R container for CI/CD"
     echo "  --full-container                     Build complete development environment"
+    echo "  --full                               alias for --full-container"
     echo ""
     echo "Other Options:"
     echo "  --debug                              Show verbose R package installation logs (default: quiet)"
