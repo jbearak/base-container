@@ -645,7 +645,7 @@ FROM base-nvim AS base-nvim-tex
 
 # ---------------------------------------------------------------------------
 # This doesn't install the full TeX Live distribution, to keep the image
-# size down, though this contributes a lot to the final image size.
+# size down, though this still contributes a lot to the final image size.
 # ---------------------------------------------------------------------------
 RUN set -e; \
     apt-get update -qq && \
@@ -1238,7 +1238,6 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode
 
 # Switch to the 'me' user for VS Code server installation
-USER me
 USER me
 
 # ---------------------------------------------------------------------------
