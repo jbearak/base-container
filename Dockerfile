@@ -1192,8 +1192,6 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     mkdir -p "$TMPDIR"; \
     echo "R package installation environment configured"; \
     # Install pak from CRAN
-    R -e 
-    apt-get update -qq && apt-get install -y --no-install-recommends build-essential gfortran; \
     # Install pak from CRAN
     R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
     # Verify pak installation
