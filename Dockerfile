@@ -447,7 +447,7 @@ RUN set -e; \
     ZOX_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing zoxide version: ${ZOX_VERSION}"; \
     # zoxide assets are typically named like zoxide_${VERSION#v}-1_${ARCH}.deb
-    ZOX_DEB_URL="$(echo "$RELEASE_INFO" | grep browser_download_url | grep -E "zoxide_.*_${ZOX_DEB_ARCH}\\.deb" | head -n 1 | cut -d '"' -f 4)"; \
+    ZOX_DEB_URL="$(echo "$RELEASE_INFO" | grep browser_download_url | grep -E \"zoxide_.*_${ZOX_DEB_ARCH}\\.deb\" | head -n 1 | cut -d '"' -f 4)"; \
     if [ -z "$ZOX_DEB_URL" ]; then \
       echo "❌ Could not find zoxide .deb for arch ${ZOX_DEB_ARCH}"; exit 1; \
     fi; \
@@ -994,7 +994,7 @@ RUN set -e; \
         else \
             echo "⚠️ soul.sty installed but not found by kpsewhich"; \
         fi; \
-    else \
+    else 
         echo "soul.sty found in system TeX Live installation"; \
     fi
 
@@ -1488,7 +1488,6 @@ RUN set -e; \
     grep -vf /tmp/excluded_packages.txt /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
     echo "Excluded packages (Stan only - no CmdStan in CI image):"; \
     cat /tmp/excluded_packages.txt || echo "None"; \
-     \
     # Set up environment for R package installation
     R_VERSION=$(R --version | head -n1 | sed "s/R version \([0-9.]*\).*/\1/"); \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
@@ -1497,12 +1496,10 @@ RUN set -e; \
     export MAKEFLAGS="-j$(nproc)"; \
     export TMPDIR=/tmp/R-pkg-cache; \
     mkdir -p "$TMPDIR"; \
-     \
     # Install R packages
     echo "Installing R packages (Stan packages excluded - no CmdStan in CI image)..."; \
     /tmp/install_r_packages.sh --packages-file /tmp/R_packages.filtered.txt; \
     echo "✅ R package installation completed"; \
-     \
     # AGGRESSIVE BUILD TOOLS REMOVAL (major space savings)
     echo "🗑️  Removing build tools and development packages..."; \
     # Remove development headers (but keep runtime libraries)
@@ -1530,11 +1527,9 @@ RUN set -e; \
         libgeos-dev \
         libudunits2-dev \
         || true; \
-     \
     # Autoremove orphaned packages
     apt-get autoremove -y; \
     apt-get clean; \
-     \
     # REINSTALL ESSENTIAL RUNTIME LIBRARIES (removed during dev package purge)
     echo "🔧 Reinstalling essential runtime libraries..."; \
     apt-get update -qq && \
@@ -1543,14 +1538,12 @@ RUN set -e; \
         libudunits2-data \
         && \
     apt-get clean && rm -rf /var/lib/apt/lists/*; \
-     \
     # AGGRESSIVE DOCUMENTATION CLEANUP (major space saver)
     echo "🗑️  Removing R package documentation..."; \
     find /usr/lib/R -name "*.pdf" -delete || true; \
     find /usr/lib/R -name "*.html" -delete || true; \
     find /usr/lib/R -name "doc" -type d -exec rm -rf {} \; || true; \
     find /usr/lib/R -name "html" -type d -exec rm -rf {} \; || true; \
-     \
     # Clean R packages documentation
     find /usr/local/lib/R -name "doc" -type d -exec rm -rf {} \; || true; \
     find /usr/local/lib/R -name "html" -type d -exec rm -rf {} \; || true; \
@@ -1560,7 +1553,6 @@ RUN set -e; \
     find /usr/local/lib/R -name "NEWS*" -delete || true; \
     find /usr/local/lib/R -name "README*" -delete || true; \
     find /usr/local/lib/R -name "CHANGELOG*" -delete || true; \
-     \
     # CACHE AND TEMPORARY FILE CLEANUP
     rm -rf \
         /tmp/R-pkg-cache \
@@ -1576,7 +1568,6 @@ RUN set -e; \
         /tmp/* \
         /var/tmp/* \
         || true; \
-     \
     echo "✅ Aggressive optimization completed"
 
 # ---------------------------------------------------------------------------
