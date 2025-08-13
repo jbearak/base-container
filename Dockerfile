@@ -1295,15 +1295,16 @@ USER root
 # ===========================================================================
 # ===========================================================================
 # ===========================================================================
-# NEW: R-CONTAINER (optimized lightweight R for CI/CD)
+# NEW: R-CONTAINER (optimized for CI/CD with full R ecosystem)
 # ===========================================================================
 # This stage creates an optimized R container for CI/CD environments like 
 # GitHub Actions and Bitbucket Pipelines. Optimizations include:
 # - Aggressive build tools removal after R package installation
 # - Complete documentation cleanup (help files, PDFs, vignettes)
-# - Heavy package exclusion (terra, sf, s2, Stan packages)
+# - Only Stan packages excluded (no CmdStan in CI image)
 # - Cache and temporary file cleanup
-# Target: ~1GB+ space savings from 4GB to ~3GB
+# - Retains full geospatial capabilities (sf, terra, s2) for mapping
+# Target: ~700MB+ space savings from 4GB to ~3.3GB
 # ---------------------------------------------------------------------------
 
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS r-container
@@ -1425,10 +1426,10 @@ COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/R_packages.txt
 RUN set -e; \
     chmod +x /tmp/install_r_packages.sh && \
-    # SELECTIVE EXCLUSION: Exclude heaviest packages for maximum space savings
-    grep -E '^(rstan|cmdstanr|rstanarm|brms|shinystan|terra|sf|s2)$' /tmp/R_packages.txt > /tmp/excluded_packages.txt || true; \
+    # SELECTIVE EXCLUSION: Only exclude Stan packages (no CmdStan in CI image)
+    grep -E '^(rstan|cmdstanr|rstanarm|brms|shinystan)$' /tmp/R_packages.txt > /tmp/excluded_packages.txt || true; \
     grep -vf /tmp/excluded_packages.txt /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
-    echo "Excluded packages for size optimization:"; \
+    echo "Excluded packages (Stan only - no CmdStan in CI image):"; \
     cat /tmp/excluded_packages.txt || echo "None"; \
     \
     # Set up environment for R package installation
@@ -1441,7 +1442,7 @@ RUN set -e; \
     mkdir -p "$TMPDIR"; \
     \
     # Install R packages
-    echo "Installing R packages (heaviest packages excluded for size)..."; \
+    echo "Installing R packages (Stan packages excluded - no CmdStan in CI image)..."; \
     /tmp/install_r_packages.sh --packages-file /tmp/R_packages.filtered.txt; \
     echo "✅ R package installation completed"; \
     \

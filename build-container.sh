@@ -135,21 +135,21 @@ test_r_container_optimized() {
     my_fail=1
   fi
   
-  # Test that essential R packages work
-  echo "  Testing essential R packages..."
-  if run_in_container 'R -e "library(dplyr); library(ggplot2); cat(\"✅ Essential packages loaded\\n\")"' >/dev/null 2>&1; then
-    echo "    ✅ Essential R packages working"
+  # Test that essential R packages work (including geospatial)
+  echo "  Testing essential R packages (including geospatial)..."
+  if run_in_container 'R -e "library(dplyr); library(ggplot2); library(sf); cat(\"✅ Essential packages including geospatial loaded\\n\")"' >/dev/null 2>&1; then
+    echo "    ✅ Essential R packages including geospatial working"
   else
     echo "    ❌ Essential R packages failed"
     my_fail=1
   fi
   
-  # Test that heavy packages are excluded
-  echo "  Verifying heavy packages exclusion..."
-  if run_in_container 'R -e "if (require(terra, quietly=TRUE)) stop(\"terra should be excluded\")"' >/dev/null 2>&1; then
-    echo "    ✅ terra excluded (as expected)"
+  # Test that only Stan packages are excluded
+  echo "  Verifying only Stan packages exclusion..."
+  if run_in_container 'R -e "if (require(rstan, quietly=TRUE)) stop(\"rstan should be excluded\")"' >/dev/null 2>&1; then
+    echo "    ✅ Stan packages excluded (as expected)"
   else
-    echo "    ❌ terra still present"
+    echo "    ❌ Stan packages still present"
     my_fail=1
   fi
   
