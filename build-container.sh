@@ -220,6 +220,8 @@ while [[ $# -gt 0 ]]; do
     echo "  --base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode Build base + nvim + LaTeX + Pandoc + extra packages + Python 3.13 + R installation + R packages + VS Code"
 
     echo "  --full                               Build the full stage"
+    echo "  --r-container                        Build lightweight R container for CI/CD"
+    echo "  --full-container                     Build complete development environment"
     echo ""
     echo "Other Options:"
     echo "  --debug                              Show verbose R package installation logs (default: quiet)"
