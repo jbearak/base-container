@@ -1334,27 +1334,13 @@ RUN set -e; \
         libxml2-dev \
         libcurl4-openssl-dev \
         libssl-dev \
-        libfontconfig1-dev \
-        libfreetype6-dev \
-        libfribidi-dev \
-        libharfbuzz-dev \
-        libjpeg-dev \
-        libpng-dev \
-        libtiff5-dev \
         libgit2-dev \
         # Additional dependencies for specific R packages
         libgdal-dev \
         libproj-dev \
         libgeos-dev \
         libudunits2-dev \
-        libnode-dev \
-        libcairo2-dev \
-        libgtk2.0-dev \
-        xvfb \
-        xauth \
-        xfonts-base \
         # For system monitoring and process management
-        htop \
         && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
