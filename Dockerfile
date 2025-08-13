@@ -250,7 +250,8 @@ RUN set -e; \
     mkdir -p /etc/apt/keyrings; \
     wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | \
         gpg --dearmor -o /etc/apt/keyrings/gierens.gpg; \
-    echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" > /etc/apt/sources.list.d/gierens.list; \
+    echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" > \
+        /etc/apt/sources.list.d/gierens.list; \
     chmod 644 /etc/apt/keyrings/gierens.gpg /etc/apt/sources.list.d/gierens.list; \
     apt-get update -qq; \
     apt-get install -y --no-install-recommends eza; \
@@ -303,7 +304,7 @@ RUN set -e; \
       *) echo "Unsupported arch for delta: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
     esac; \
     # Get latest release info from GitHub API
-    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/dandavison/delta/releases/latest); \
+    RELEASE_INFO=$(curl -s https://api.github.com/repos/dandavison/delta/releases/latest); \
     DELTA_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing delta version: ${DELTA_VERSION}"; \
     # Construct URL for .deb package
@@ -1669,14 +1670,7 @@ FROM base AS lint
 WORKDIR /tmp
 
 COPY Dockerfile .
+COPY extract_scripts.sh .
 
-RUN \
-    # Extract shell scripts from RUN instructions marked with # shellcheck-check
-    awk ' \
-        BEGIN { out=0; } \
-        /^# shellcheck-check/ { out=1; next; } \
-        /^RUN/ { if (out) { sub(/^RUN[[:space:]]*/, ""); print > "scripts.sh"; out=0; } } \
-        /\$/ { if (out) { print >> "scripts.sh"; } } \
-    ' Dockerfile && \
-    # Run shellcheck on the extracted scripts
+RUN ./extract_scripts.sh Dockerfile > scripts.sh && \
     shellcheck scripts.sh
