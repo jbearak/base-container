@@ -21,6 +21,3 @@ If a branch already exists for the issue or PR:{
 }
 
 Edit files locally and commit your changes.
-
-Do not push until asked to push or to submit a PR.
-
