@@ -344,3 +344,63 @@ docker run --rm base-container:pak R -e 'pak::cache_summary()' 2>/dev/null || ec
 ## License
 
 Licensed under the [MIT License](LICENSE.txt).
+
+
+## Multiple container targets
+
+This repository now supports two top-level container targets optimized for different use cases.
+
+- r-container: a lightweight R-focused image for CI/CD
+  - Base: Ubuntu + essential build tools only
+  - Includes: R 4.x, pak, JAGS, and packages from R_packages.txt (Stan packages excluded)
+  - Skips: Neovim, LaTeX toolchain, Pandoc, Haskell, Python, VS Code server, CmdStan
+  - Working directory: /workspace, ENV CI=true
+  - Best for: GitHub Actions / Bitbucket Pipelines / other CI runners
+
+- full-container: the complete local development environment
+  - Includes: Neovim (+plugins), LaTeX, Pandoc (+crossref), Haskell/Stack,
+    Python 3.13, R (+pak + packages), VS Code server, dotfiles
+  - Working directory: /workspaces
+  - Best for: local development, VS Code Dev Containers
+
+### Build commands
+
+- Build the lightweight R image (CI optimized):
+
+  ./build-container.sh --r-container
+
+- Build the complete dev environment:
+
+  ./build-container.sh --full-container
+
+Add --test to run non-interactive verification inside the built image.
+
+### Using in VS Code Dev Containers (full-container)
+
+Reference the published image in your project's .devcontainer/devcontainer.json:
+
+{
+  "name": "base-container (full)",
+  "image": "ghcr.io/jbearak/full-container:full-container",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/project,type=bind",
+  "workspaceFolder": "/workspaces/project"
+}
+
+### Notes
+
+- Both targets install R packages using pak based on R_packages.txt; the set is shared so R behavior is consistent.
+- The r-container target may install additional apt packages (e.g., pandoc) via pak when needed by R packages.
+- The legacy stage name full remains available for backward compatibility and aliases to full-container.
+
+
+
+### r-container (slim CI image)
+
+This stage is designed for CI/CD. It intentionally excludes heavy toolchains and developer tools to keep the image small and fast:
+- No CmdStan; Stan model compilation is not supported in this image
+- Stan-related R packages are excluded by default during installation
+- Compilers (g++, gcc, gfortran, make) are installed only temporarily for building R packages, then purged
+- Not included: LaTeX, Neovim, pandoc-crossref, Go toolchain, Python user tools, and various CLI utilities present in full-container
+- Aggressive cleanup of caches, man pages, docs, and R help files
+
+If you need to compile Stan models, use the full-container image or a custom derivative.
