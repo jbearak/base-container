@@ -99,6 +99,63 @@ test_dev_tools() {
   return $my_fail
 }
 
+test_r_container_optimized() {
+  echo "🔬 Testing r-container optimizations..."
+  local my_fail=0
+  
+  # Test that build tools are removed
+  echo "  Verifying build tools removal..."
+  if run_in_container "command -v gcc >/dev/null 2>&1"; then
+    echo "    ❌ gcc still present"
+    my_fail=1
+  else
+    echo "    ✅ gcc removed"
+  fi
+  
+  if run_in_container "command -v make >/dev/null 2>&1"; then
+    echo "    ❌ make still present"
+    my_fail=1
+  else
+    echo "    ✅ make removed"
+  fi
+  
+  if run_in_container "dpkg -l | grep -q r-base-dev"; then
+    echo "    ❌ r-base-dev still present"
+    my_fail=1
+  else
+    echo "    ✅ r-base-dev removed"
+  fi
+  
+  # Test that git-lfs is present
+  echo "  Verifying git-lfs availability..."
+  if run_in_container "git lfs version >/dev/null 2>&1"; then
+    echo "    ✅ git-lfs available"
+  else
+    echo "    ❌ git-lfs missing"
+    my_fail=1
+  fi
+  
+  # Test that essential R packages work
+  echo "  Testing essential R packages..."
+  if run_in_container 'R -e "library(dplyr); library(ggplot2); cat(\"✅ Essential packages loaded\\n\")"' >/dev/null 2>&1; then
+    echo "    ✅ Essential R packages working"
+  else
+    echo "    ❌ Essential R packages failed"
+    my_fail=1
+  fi
+  
+  # Test that heavy packages are excluded
+  echo "  Verifying heavy packages exclusion..."
+  if run_in_container 'R -e "if (require(terra, quietly=TRUE)) stop(\"terra should be excluded\")"' >/dev/null 2>&1; then
+    echo "    ✅ terra excluded (as expected)"
+  else
+    echo "    ❌ terra still present"
+    my_fail=1
+  fi
+  
+  return $my_fail
+}
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -173,7 +230,7 @@ while [[ $# -gt 0 ]]; do
     BUILD_TARGET="r-container"
     IMAGE_TAG="r-container"
     CONTAINER_NAME="r-container"
-    echo "📊 Building lightweight R container for CI/CD..."
+    echo "📊 Building optimized R container for CI/CD (build tools removed after package installation)..."
     shift
     ;;
   --full)
@@ -237,7 +294,7 @@ while [[ $# -gt 0 ]]; do
     echo "  --base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak Build base + nvim + LaTeX + Pandoc + extra packages + Python 3.13 + R installation + R packages"
     echo "  --base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode Build base + nvim + LaTeX + Pandoc + extra packages + Python 3.13 + R installation + R packages + VS Code"
 
-    echo "  --r-container                        Build lightweight R container for CI/CD"
+    echo "  --r-container                        Build optimized R container for CI/CD (aggressive size optimization)"
     echo "  --full-container                     Build complete development environment"
     echo "  --full                               alias for --full-container"
     echo ""
@@ -426,6 +483,11 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     if ! run_in_container 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'; then
       TEST_FAIL=1
     fi
+  fi
+
+  # r-container specific optimization tests
+  if [ "$BUILD_TARGET" = "r-container" ]; then
+    test_r_container_optimized || TEST_FAIL=1
   fi
 
   # Python tests (moved to stage 9)

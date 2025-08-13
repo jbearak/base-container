@@ -1294,11 +1294,16 @@ USER root
 
 # ===========================================================================
 # ===========================================================================
-# NEW: R-CONTAINER (lightweight R path + minimal config + cleanup for CI)
 # ===========================================================================
-# This stage creates a lightweight R container optimized for CI/CD environments
-# like GitHub Actions and Bitbucket Pipelines. It includes only the essential
-# components: Ubuntu base + R + R packages + minimal configuration.
+# NEW: R-CONTAINER (optimized lightweight R for CI/CD)
+# ===========================================================================
+# This stage creates an optimized R container for CI/CD environments like 
+# GitHub Actions and Bitbucket Pipelines. Optimizations include:
+# - Aggressive build tools removal after R package installation
+# - Complete documentation cleanup (help files, PDFs, vignettes)
+# - Heavy package exclusion (terra, sf, s2, Stan packages)
+# - Cache and temporary file cleanup
+# Target: ~1GB+ space savings from 4GB to ~3GB
 # ---------------------------------------------------------------------------
 
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS r-container
@@ -1326,7 +1331,7 @@ RUN set -e; \
         r-base \
         r-base-dev \
         r-recommended \
-        # Build dependencies for R packages
+        # Build dependencies for R packages (will be removed after installation)
         build-essential \
         gfortran \
         libblas-dev \
@@ -1340,6 +1345,8 @@ RUN set -e; \
         libproj-dev \
         libgeos-dev \
         libudunits2-dev \
+        # Essential for CI/CD workflows with large files
+        git-lfs \
         # For system monitoring and process management
         && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -1413,14 +1420,17 @@ RUN set -e; \
     # Verify pak installation
     R -e "if (!require('pak', quietly=TRUE)) { stop('pak installation failed') } else { cat('✅ pak installed successfully\n') }"
 
-# Copy and run R package installation script
+# Copy and run R package installation script with aggressive optimization
 COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/R_packages.txt
 RUN set -e; \
     chmod +x /tmp/install_r_packages.sh && \
-    # Exclude specific Stan packages by exact name
-    grep -E '^(rstan|cmdstanr|rstanarm|brms|shinystan)$' /tmp/R_packages.txt > /tmp/stan_packages.txt || true; \
-    grep -vf /tmp/stan_packages.txt /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
+    # SELECTIVE EXCLUSION: Exclude heaviest packages for maximum space savings
+    grep -E '^(rstan|cmdstanr|rstanarm|brms|shinystan|terra|sf|s2)$' /tmp/R_packages.txt > /tmp/excluded_packages.txt || true; \
+    grep -vf /tmp/excluded_packages.txt /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
+    echo "Excluded packages for size optimization:"; \
+    cat /tmp/excluded_packages.txt || echo "None"; \
+    \
     # Set up environment for R package installation
     R_VERSION=$(R --version | head -n1 | sed "s/R version \([0-9.]*\).*/\1/"); \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
@@ -1429,13 +1439,78 @@ RUN set -e; \
     export MAKEFLAGS="-j$(nproc)"; \
     export TMPDIR=/tmp/R-pkg-cache; \
     mkdir -p "$TMPDIR"; \
-    echo "Installing R packages (stan packages excluded)..."; \
+    \
+    # Install R packages
+    echo "Installing R packages (heaviest packages excluded for size)..."; \
     /tmp/install_r_packages.sh --packages-file /tmp/R_packages.filtered.txt; \
     echo "✅ R package installation completed"; \
-    # Purge build toolchains and clean caches
-    apt-get purge -y build-essential g++ gcc make gfortran cpp libstdc++-*-dev libgcc-*-dev || true; \
+    \
+    # AGGRESSIVE BUILD TOOLS REMOVAL (major space savings)
+    echo "🗑️  Removing build tools and development packages..."; \
+    apt-get purge -y \
+        r-base-dev \
+        build-essential \
+        g++ \
+        gcc \
+        make \
+        gfortran \
+        cpp \
+        libstdc++-*-dev \
+        libgcc-*-dev \
+        libc6-dev \
+        linux-libc-dev \
+        manpages-dev \
+        # Remove development headers
+        libblas-dev \
+        liblapack-dev \
+        libxml2-dev \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        libgit2-dev \
+        libgdal-dev \
+        libproj-dev \
+        libgeos-dev \
+        libudunits2-dev \
+        || true; \
+    \
+    # Autoremove orphaned packages
     apt-get autoremove -y; \
-    rm -rf /tmp/R-pkg-cache /tmp/install_r_packages.sh /tmp/R_packages.txt /tmp/R_packages.filtered.txt /tmp/stan_packages.txt /root/.cache /home/me/.cache /var/cache/apt/* /var/lib/apt/lists/*
+    apt-get clean; \
+    \
+    # AGGRESSIVE DOCUMENTATION CLEANUP (major space saver)
+    echo "🗑️  Removing R package documentation..."; \
+    find /usr/lib/R -name "*.pdf" -delete || true; \
+    find /usr/lib/R -name "*.html" -delete || true; \
+    find /usr/lib/R -name "doc" -type d -exec rm -rf {} + || true; \
+    find /usr/lib/R -name "html" -type d -exec rm -rf {} + || true; \
+    \
+    # Clean R packages documentation
+    find /usr/local/lib/R -name "doc" -type d -exec rm -rf {} + || true; \
+    find /usr/local/lib/R -name "html" -type d -exec rm -rf {} + || true; \
+    find /usr/local/lib/R -name "help" -type d -exec rm -rf {} + || true; \
+    find /usr/local/lib/R -name "*.pdf" -delete || true; \
+    find /usr/local/lib/R -name "*.html" -delete || true; \
+    find /usr/local/lib/R -name "NEWS*" -delete || true; \
+    find /usr/local/lib/R -name "README*" -delete || true; \
+    find /usr/local/lib/R -name "CHANGELOG*" -delete || true; \
+    \
+    # CACHE AND TEMPORARY FILE CLEANUP
+    rm -rf \
+        /tmp/R-pkg-cache \
+        /tmp/install_r_packages.sh \
+        /tmp/R_packages.txt \
+        /tmp/R_packages.filtered.txt \
+        /tmp/excluded_packages.txt \
+        /root/.cache \
+        /home/me/.cache \
+        /var/cache/apt/* \
+        /var/lib/apt/lists/* \
+        /var/log/* \
+        /tmp/* \
+        /var/tmp/* \
+        || true; \
+    \
+    echo "✅ Aggressive optimization completed"
 
 # ---------------------------------------------------------------------------
 # Create minimal CI-focused .Rprofile
@@ -1466,13 +1541,6 @@ RUN echo "" >> /home/me/.bashrc && \
     cp /home/me/.bashrc /root/.bashrc && \
     cp /home/me/.zshrc /root/.zshrc && \
     rm /tmp/r-shell-config
-
-# ---------------------------------------------------------------------------
-# Minimal cleanup for CI optimization
-# ---------------------------------------------------------------------------
-RUN apt-get autoremove -y && apt-get autoclean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
-    /root/.cache/* /home/me/.cache/*
 
 # Set CI-optimized working directory and env vars
 WORKDIR /workspace
