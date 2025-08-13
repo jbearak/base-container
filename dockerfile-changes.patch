@@ -1,0 +1,166 @@
+# Dockerfile Changes for Multiple Container Builds
+
+## Key Changes Needed in Dockerfile:
+
+### 1. Update header (lines 1-25):
+```dockerfile
+# OLD:
+# MULTI-STAGE R base-container IMAGE - OPTIMIZED FOR DOCKER LAYER CACHING
+# Purpose   : Build a containerized R development environment optimized for
+#             VS Code and the Dev Containers extension.  This Dockerfile uses
+#             a multi-stage approach optimized for Docker layer caching:
+#             Stage 12 (full)              : Final stage; applies shell config, sets workdir, and finalizes defaults.
+
+# NEW:
+# MULTI-STAGE R CONTAINER IMAGE - OPTIMIZED FOR DOCKER LAYER CACHING
+# Purpose   : Build containerized R development environments optimized for
+#             different use cases. This Dockerfile uses a multi-stage approach
+#             optimized for Docker layer caching with two final targets:
+#
+#             r-container: Lightweight for CI/CD (GitHub Actions, Bitbucket Pipelines)
+#             full-container: Complete development environment
+#             Stage 12 (full-container)    : Complete development environment (renamed from 'full').
+#             Stage 13 (r-container)       : Lightweight CI/CD container (branches from base).
+```
+
+### 2. Update usage examples (lines 35-45):
+```dockerfile
+# ADD:
+#               docker build --target full-container -t full-container:latest .
+#               docker build --target r-container -t r-container:latest .
+```
+
+### 3. Add jq and yq to base stage (after line 183):
+```dockerfile
+# Add after the main apt-get install and clean:
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Install jq and yq for JSON/YAML processing (needed for both containers)
+# ---------------------------------------------------------------------------
+RUN apt-get update -qq && apt-get install -y --no-install-recommends jq && \
+    wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && \
+    chmod +x /usr/local/bin/yq && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+```
+
+### 4. Rename final stage (around line 1301):
+```dockerfile
+# OLD:
+FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full
+
+# NEW:
+FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full-container
+```
+
+### 5. Add r-container stage (at the end of file):
+```dockerfile
+# ===========================================================================
+# STAGE 13: LIGHTWEIGHT R CONTAINER FOR CI/CD     (r-container)
+# ===========================================================================
+# This stage creates a lightweight container optimized for CI/CD pipelines
+# (GitHub Actions, Bitbucket Pipelines). It branches from the base stage
+# and includes only essential R packages and tools.
+# ---------------------------------------------------------------------------
+
+FROM base AS r-container
+
+# Switch to root for system package installation
+USER root
+
+# ---------------------------------------------------------------------------
+# R installation from CRAN (same as stage 9 but without CmdStan/JAGS)
+# ---------------------------------------------------------------------------
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+        dirmngr \
+        gnupg \
+        lsb-release && \
+    # Add CRAN repository key
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/cran_ubuntu_key.gpg && \
+    # Add CRAN repository manually (avoiding add-apt-repository issues)
+    echo "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" > /etc/apt/sources.list.d/cran.list && \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        r-base \
+        r-base-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# R compilation optimization (same as full container)
+# ---------------------------------------------------------------------------
+RUN mkdir -p /home/me/.R && \
+    echo 'MAKEFLAGS = -j$(nproc)' > /home/me/.R/Makevars && \
+    echo 'CXX = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CC = gcc -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX11 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX14 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXX17 = g++ -pipe' >> /home/me/.R/Makevars && \
+    echo 'CXXFLAGS = -g -O2 -fPIC -pipe' >> /home/me/.R/Makevars && \
+    chown -R me:me /home/me/.R
+
+# Install pak and essential R packages (similar to full container but with R_packages_essential.txt)
+# ... (pak installation and R package installation with essential packages)
+
+# ---------------------------------------------------------------------------
+# Aggressive cleanup for CI/CD optimization
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Performing aggressive cleanup for CI/CD optimization..."; \
+    # Remove packages not needed for CI
+    apt-get update -qq && \
+    apt-get remove -y --purge \
+        npm nodejs default-jdk python3-pip \
+        build-essential cmake autoconf automake libtool ninja-build pkg-config \
+        python3-dev libxml2-dev libcurl4-openssl-dev libssl-dev \
+        libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev \
+        libpng-dev libtiff5-dev libjpeg-dev libgdal-dev libproj-dev libgeos-dev \
+        libudunits2-dev libcairo2-dev libxt-dev libx11-dev libmagick++-dev \
+        librsvg2-dev libv8-dev libjq-dev libprotobuf-dev libnode-dev \
+        libsqlite3-dev libpq-dev libsasl2-dev libldap2-dev libgit2-dev \
+        libgsl-dev libmpfr-dev \
+        neovim tmux tree-sitter-cli fd-find bat shellcheck shfmt && \
+    # Keep gfortran - essential for R package ecosystem
+    apt-get autoremove -y && \
+    # Aggressive cleanup
+    rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* || true; \
+    rm -rf /root/.cache/* /home/me/.cache/* /var/cache/* || true; \
+    apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    echo "✅ Aggressive cleanup completed"
+
+# ---------------------------------------------------------------------------
+# CI/CD optimizations
+# ---------------------------------------------------------------------------
+# Set CI-friendly environment variables
+ENV CI=true
+ENV DEBIAN_FRONTEND=noninteractive
+ENV R_LIBS_USER=/usr/local/lib/R/site-library
+
+# Create and set CI-standard working directory
+RUN mkdir -p /workspace && chown me:me /workspace
+WORKDIR /workspace
+
+# Keep shell as bash for RUN commands,
+# while making zsh the default for interactive sessions
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV SHELL=/bin/zsh
+CMD ["/bin/zsh", "-l"]
+
+# Switch to the 'me' user for the final container
+USER me
+```
+
+## Summary
+These changes implement:
+1. Updated header to reflect multiple container builds
+2. Added jq and yq to base stage for both containers
+3. Renamed 'full' stage to 'full-container'
+4. Added new 'r-container' stage that branches from base
+5. r-container includes:
+   - R installation (no CmdStan/JAGS)
+   - Essential R packages only
+   - Aggressive cleanup for size optimization
+   - CI-friendly environment variables
+   - /workspace working directory (CI standard)
+   - Removed development tools not needed for CI
