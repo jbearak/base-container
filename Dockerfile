@@ -1468,6 +1468,7 @@ RUN set -e; \
     \
     # AGGRESSIVE BUILD TOOLS REMOVAL (major space savings)
     echo "🗑️  Removing build tools and development packages..."; \
+    # Remove development headers (but keep runtime libraries)
     apt-get purge -y \
         r-base-dev \
         build-essential \
@@ -1481,7 +1482,7 @@ RUN set -e; \
         libc6-dev \
         linux-libc-dev \
         manpages-dev \
-        libblas-dev \  # Remove development headers (but keep runtime libraries)
+        libblas-dev \
         liblapack-dev \
         libxml2-dev \
         libcurl4-openssl-dev \
