@@ -1,0 +1,113 @@
+# Build Script Changes for Multiple Container Builds
+
+## Key Changes Needed in build-container.sh:
+
+### 1. Change default target (line 10):
+```bash
+# OLD:
+BUILD_TARGET="full" # Default to full build
+
+# NEW:
+BUILD_TARGET="full-container" # Default to full-container build
+```
+
+### 2. Add new argument parsing (around line 155):
+```bash
+# ADD BEFORE existing --full:
+  --full-container)
+    BUILD_TARGET="full-container"
+    IMAGE_TAG="full-container"
+    echo "🏗️  Building full development environment container..."
+    shift
+    ;;
+  --r-container)
+    BUILD_TARGET="r-container"
+    IMAGE_TAG="r-container"
+    echo "📦 Building lightweight R container for CI/CD..."
+    shift
+    ;;
+
+# MODIFY existing --full:
+  --full)
+    BUILD_TARGET="full-container"
+    IMAGE_TAG="full-container"
+    echo "🏗️  Building full development environment container (legacy --full flag)..."
+    shift
+    ;;
+```
+
+### 3. Update help text (around line 208):
+```bash
+# REPLACE:
+    echo "  --full                               Build the full stage"
+
+# WITH:
+    echo "  --full-container                     Build the complete development environment"
+    echo "  --r-container                        Build lightweight R container for CI/CD"
+    echo "  --full                               Build the complete development environment (legacy)"
+```
+
+### 4. Update examples in help (around line 231):
+```bash
+# REPLACE:
+    echo "  $0 --full --no-cache              # Full clean build"
+    echo "  $0 --full --cache-from-to ghcr.io/user/repo  # Use registry cache"
+
+# WITH:
+    echo "  $0 --full-container --no-cache     # Full clean build"
+    echo "  $0 --r-container                   # Lightweight R container for CI/CD"
+    echo "  $0 --full-container --cache-from-to ghcr.io/user/repo  # Use registry cache"
+```
+
+### 5. Update test conditions (multiple locations):
+Replace all instances of:
+- `|| [ "$BUILD_TARGET" = "full" ]` with `|| [ "$BUILD_TARGET" = "full-container" ]`
+
+Add new r-container specific tests:
+```bash
+  # R-only tests for r-container
+  if [ "$BUILD_TARGET" = "r-container" ]; then
+    echo "📐 Testing R installation (r-container)..."
+    run_in_container "R --version" || TEST_FAIL=1
+    echo "📦 Testing essential R packages..."
+    if ! run_in_container 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'; then
+      TEST_FAIL=1
+    fi
+  fi
+```
+
+### 6. Update final output section (around line 462):
+```bash
+# ADD new cases:
+"full-container")
+  echo "  • Test the full-container stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
+  echo "  • Tag and push to GitHub Container Registry:"
+  echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/full-container:${IMAGE_TAG}"
+  echo "    docker push ghcr.io/jbearak/full-container:${IMAGE_TAG}"
+  ;;
+"r-container")
+  echo "  • Test the r-container stage: docker run -it --rm -v \$(pwd):/workspace ${CONTAINER_NAME}:${IMAGE_TAG}"
+  echo "  • Test R installation: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} R --version"
+  echo "  • Test essential R packages: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} R -e 'cat(\"Packages:\", length(.packages(all.available=TRUE)), \"\n\")'"
+  echo "  • Tag and push to GitHub Container Registry:"
+  echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/r-container:${IMAGE_TAG}"
+  echo "    docker push ghcr.io/jbearak/r-container:${IMAGE_TAG}"
+  ;;
+
+# MODIFY existing "full" case:
+"full")
+  echo "  • Test the full-container stage (legacy): docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
+  echo "  • Tag and push to GitHub Container Registry:"
+  echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/full-container:${IMAGE_TAG}"
+  echo "    docker push ghcr.io/jbearak/full-container:${IMAGE_TAG}"
+  ;;
+```
+
+## Summary
+These changes add support for:
+- `--r-container`: Builds lightweight CI/CD container
+- `--full-container`: Builds complete development environment
+- `--full`: Legacy support (maps to full-container)
+- Updated test conditions for both new targets
+- Updated help text and examples
+- Updated final output with appropriate registry names
