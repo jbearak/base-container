@@ -1292,13 +1292,236 @@ USER root
 
 
 # ===========================================================================
-# STAGE 12: FULL DEVELOPMENT ENVIRONMENT          (full)
 # ===========================================================================
-# This is the final stage that will be the default target when building
-# with no --target flag. Currently empty but ready for additional setup.
+# NEW: R-CONTAINER (lightweight R path + minimal config + cleanup for CI)
+# ===========================================================================
+# This stage creates a lightweight R container optimized for CI/CD environments
+# like GitHub Actions and Bitbucket Pipelines. It includes only the essential
+# components: Ubuntu base + R + R packages + minimal configuration.
 # ---------------------------------------------------------------------------
 
-FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full
+FROM base AS r-container
+
+USER root
+
+# ---------------------------------------------------------------------------
+# R installation from CRAN (same as stage 9)
+# ---------------------------------------------------------------------------
+# Ubuntu's default R version is often outdated. We add the official CRAN
+# repository to get the latest stable R version.
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    # Add CRAN GPG key
+    curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marmalade.gpg | \
+        gpg --dearmor -o /usr/share/keyrings/cran-archive-keyring.gpg; \
+    # Add CRAN repository
+    echo "deb [signed-by=/usr/share/keyrings/cran-archive-keyring.gpg] https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/" > \
+        /etc/apt/sources.list.d/cran.list; \
+    # Update package list and install R
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        r-base \
+        r-base-dev \
+        r-recommended \
+        # Build dependencies for R packages
+        build-essential \
+        gfortran \
+        libblas-dev \
+        liblapack-dev \
+        libxml2-dev \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        libfontconfig1-dev \
+        libfreetype6-dev \
+        libfribidi-dev \
+        libharfbuzz-dev \
+        libjpeg-dev \
+        libpng-dev \
+        libtiff5-dev \
+        libgit2-dev \
+        # Additional dependencies for specific R packages
+        libgdal-dev \
+        libproj-dev \
+        libgeos-dev \
+        libudunits2-dev \
+        libnode-dev \
+        libcairo2-dev \
+        libgtk2.0-dev \
+        xvfb \
+        xauth \
+        xfonts-base \
+        # For system monitoring and process management
+        htop \
+        && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# CmdStan installation (same as stage 9)
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    echo "Installing CmdStan..."; \
+    mkdir -p /opt/cmdstan; \
+    cd /opt/cmdstan; \
+    # Get the latest CmdStan release info from GitHub API
+    RELEASE_INFO=$(curl -fsSL https://api.github.com/repos/stan-dev/cmdstan/releases/latest); \
+    CMDSTAN_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
+    # Remove 'v' prefix from version for filename (e.g., v2.36.0 -> 2.36.0)
+    CMDSTAN_VERSION_CLEAN=$(echo "$CMDSTAN_VERSION" | sed 's/^v//'); \
+    echo "Installing CmdStan version: ${CMDSTAN_VERSION} (filename version: ${CMDSTAN_VERSION_CLEAN})"; \
+    # Construct URL for tarball (CmdStan uses version without 'v' prefix in filename)
+    CMDSTAN_URL="https://github.com/stan-dev/cmdstan/releases/download/${CMDSTAN_VERSION}/cmdstan-${CMDSTAN_VERSION_CLEAN}.tar.gz"; \
+    echo "Downloading CmdStan tarball from: ${CMDSTAN_URL}"; \
+    # Download tarball (CmdStan doesn't provide checksums, so we generate SHA256 for transparency)
+    curl -fsSL "$CMDSTAN_URL" -o cmdstan.tar.gz; \
+    CMDSTAN_SHA256=$(sha256sum cmdstan.tar.gz | cut -d' ' -f1); \
+    echo "CmdStan SHA256: ${CMDSTAN_SHA256}"; \
+    # Extract and build
+    tar -xzf cmdstan.tar.gz --strip-components=1; \
+    rm cmdstan.tar.gz; \
+    # Build CmdStan (this compiles the Stan math library and creates the cmdstan binary)
+    make build -j$(nproc); \
+    # Set ownership and permissions
+    chown -R me:me /opt/cmdstan; \
+    echo "✅ CmdStan installed successfully"
+
+# ---------------------------------------------------------------------------
+# JAGS installation (same as stage 9)
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends jags && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    echo "✅ JAGS installed successfully"
+
+# ---------------------------------------------------------------------------
+# R configuration for optimized package compilation (same as stage 9)
+# ---------------------------------------------------------------------------
+RUN set -e; \
+    mkdir -p /home/me/.R; \
+    cat > /home/me/.R/Makevars << 'EOF'
+# Compiler optimization flags for faster R package compilation
+# These flags can significantly speed up package installation from source
+CFLAGS=-O3 -mtune=native
+CXXFLAGS=-O3 -mtune=native
+CXX11FLAGS=-O3 -mtune=native
+CXX14FLAGS=-O3 -mtune=native
+CXX17FLAGS=-O3 -mtune=native
+CXX20FLAGS=-O3 -mtune=native
+FFLAGS=-O3 -mtune=native
+FCFLAGS=-O3 -mtune=native
+
+# Use all available cores for compilation (adjust if needed)
+MAKEFLAGS=-j$(nproc)
+EOF
+    chown -R me:me /home/me/.R; \
+    echo "✅ R compilation configuration applied"
+
+# ---------------------------------------------------------------------------
+# R package installation (same as stage 10)
+# ---------------------------------------------------------------------------
+USER root
+
+# Set up R library directory with proper segregation
+RUN set -e; \
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
+    SITE_LIB_DIR="/usr/local/lib/R/site-library-${R_MAJOR_MINOR}"; \
+    echo "Setting up R site library at: $SITE_LIB_DIR"; \
+    mkdir -p "$SITE_LIB_DIR"; \
+    chown -R me:me "$SITE_LIB_DIR"; \
+    chmod -R 755 "$SITE_LIB_DIR"; \
+    # Configure R to use this directory
+    echo "R_LIBS_SITE=\"$SITE_LIB_DIR\"" >> /etc/environment; \
+    echo "R library path configured: $SITE_LIB_DIR"; \
+    # Create compatibility symlink from standard R location
+    ln -sf "$SITE_LIB_DIR" "/usr/local/lib/R/site-library"; \
+    echo "✅ R site library segregation configured with compatibility symlink"
+
+# Install pak and R packages
+RUN set -e; \
+    # Set up environment for R package installation
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
+    SITE_LIB_DIR="/usr/local/lib/R/site-library-${R_MAJOR_MINOR}"; \
+    export R_LIBS_SITE="$SITE_LIB_DIR"; \
+    export MAKEFLAGS="-j$(nproc)"; \
+    export TMPDIR=/tmp/R-pkg-cache; \
+    echo "R package installation environment configured"; \
+    # Install pak from CRAN
+    R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
+    # Verify pak installation
+    R -e "if (!require('pak', quietly=TRUE)) { stop('pak installation failed') } else { cat('✅ pak installed successfully\n') }"
+
+# Copy and run R package installation script
+COPY install_r_packages.sh /tmp/install_r_packages.sh
+COPY R_packages.txt /tmp/R_packages.txt
+RUN set -e; \
+    chmod +x /tmp/install_r_packages.sh && \
+    # Set up environment for R package installation
+    R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
+    R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
+    SITE_LIB_DIR="/usr/local/lib/R/site-library-${R_MAJOR_MINOR}"; \
+    export R_LIBS_SITE="$SITE_LIB_DIR"; \
+    export MAKEFLAGS="-j$(nproc)"; \
+    export TMPDIR=/tmp/R-pkg-cache; \
+    mkdir -p "$TMPDIR"; \
+    echo "Installing R packages from R_packages.txt..."; \
+    /tmp/install_r_packages.sh /tmp/R_packages.txt; \
+    echo "✅ R package installation completed"; \
+    # Clean up
+    rm -rf /tmp/R-pkg-cache /tmp/install_r_packages.sh /tmp/R_packages.txt
+
+# ---------------------------------------------------------------------------
+# Create minimal CI-focused .Rprofile
+# ---------------------------------------------------------------------------
+RUN cat > /home/me/.Rprofile << 'EOF'
+# Source renv activation if it exists
+if (file.exists("renv/activate.R")) {
+  source("renv/activate.R")
+}
+# If using renv, create symlinks to system libraries instead of
+# downloading packages
+options(renv.config.install.shortcuts = TRUE)
+
+# Always ensure system library is in the path (after renv activation)
+.libPaths(c(.libPaths(), "/usr/local/lib/R/site-library"))
+EOF
+
+# Copy minimal .Rprofile to root as well
+RUN cp /home/me/.Rprofile /root/.Rprofile
+
+# ---------------------------------------------------------------------------
+# Add R shell configuration to both bash and zsh
+# ---------------------------------------------------------------------------
+COPY r-shell-config /tmp/r-shell-config
+RUN echo "" >> /home/me/.bashrc && \
+    cat /tmp/r-shell-config >> /home/me/.bashrc && \
+    cat /tmp/r-shell-config > /home/me/.zshrc && \
+    cp /home/me/.bashrc /root/.bashrc && \
+    cp /home/me/.zshrc /root/.zshrc && \
+    rm /tmp/r-shell-config
+
+# ---------------------------------------------------------------------------
+# Minimal cleanup for CI optimization
+# ---------------------------------------------------------------------------
+RUN apt-get autoremove -y && apt-get autoclean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
+    /root/.cache/* /home/me/.cache/*
+
+# Set CI-optimized working directory and env vars
+WORKDIR /workspace
+ENV CI=true
+
+# Switch to the 'me' user for the final container
+USER me
+
+# ===========================================================================
+# NEW: FULL-CONTAINER (complete development environment)
+# ===========================================================================
+# This stage creates the complete development environment with all tools
+# ---------------------------------------------------------------------------
+
+FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode AS full-container
 
 USER root
 
@@ -1332,3 +1555,12 @@ CMD ["/bin/zsh", "-l"]
 # ---------------------------------------------------------------------------
 # Switch to the 'me' user for the final container
 USER me
+
+# ===========================================================================
+# LEGACY: FULL (backward compatibility)
+# ===========================================================================
+# This stage provides backward compatibility for existing build scripts
+# that target 'full'. It's an alias for 'full-container'.
+# ---------------------------------------------------------------------------
+
+FROM full-container AS full
