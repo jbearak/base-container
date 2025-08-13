@@ -146,7 +146,7 @@ test_r_container_optimized() {
   
   # Test that only Stan packages are excluded
   echo "  Verifying only Stan packages exclusion..."
-  if run_in_container 'R -e "if (require(rstan, quietly=TRUE)) stop(\"rstan should be excluded\")"' >/dev/null 2>&1; then
+  if run_in_container 'R -e "quit(status=if(require(rstan, quietly=TRUE)) 1 else 0)"' >/dev/null 2>&1; then
     echo "    ✅ Stan packages excluded (as expected)"
   else
     echo "    ❌ Stan packages still present"

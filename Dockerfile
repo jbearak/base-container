@@ -1481,8 +1481,7 @@ RUN set -e; \
         libc6-dev \
         linux-libc-dev \
         manpages-dev \
-        # Remove development headers (but keep runtime libraries)
-        libblas-dev \
+        libblas-dev \  # Remove development headers (but keep runtime libraries)
         liblapack-dev \
         libxml2-dev \
         libcurl4-openssl-dev \
@@ -1511,13 +1510,13 @@ RUN set -e; \
     echo "🗑️  Removing R package documentation..."; \
     find /usr/lib/R -name "*.pdf" -delete || true; \
     find /usr/lib/R -name "*.html" -delete || true; \
-    find /usr/lib/R -name "doc" -type d -exec rm -rf {} + || true; \
-    find /usr/lib/R -name "html" -type d -exec rm -rf {} + || true; \
+    find /usr/lib/R -name "doc" -type d -exec rm -rf {} \; || true; \
+    find /usr/lib/R -name "html" -type d -exec rm -rf {} \; || true; \
     \
     # Clean R packages documentation
-    find /usr/local/lib/R -name "doc" -type d -exec rm -rf {} + || true; \
-    find /usr/local/lib/R -name "html" -type d -exec rm -rf {} + || true; \
-    find /usr/local/lib/R -name "help" -type d -exec rm -rf {} + || true; \
+    find /usr/local/lib/R -name "doc" -type d -exec rm -rf {} \; || true; \
+    find /usr/local/lib/R -name "html" -type d -exec rm -rf {} \; || true; \
+    find /usr/local/lib/R -name "help" -type d -exec rm -rf {} \; || true; \
     find /usr/local/lib/R -name "*.pdf" -delete || true; \
     find /usr/local/lib/R -name "*.html" -delete || true; \
     find /usr/local/lib/R -name "NEWS*" -delete || true; \
