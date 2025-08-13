@@ -386,13 +386,19 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     test_nvim_and_plugins || TEST_FAIL=1
   fi
 
-  test_dev_tools || TEST_FAIL=1
+  # Dev tools are intentionally not present in r-container
+  if [ "$BUILD_TARGET" != "r-container" ]; then
+    test_dev_tools || TEST_FAIL=1
+  fi
 
   # R installation tests (new stage 10)
   if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
     echo "📐 Testing R installation..."
     run_in_container "R --version" || TEST_FAIL=1
-    run_in_container "ls -la /opt/cmdstan/bin/" || TEST_FAIL=1
+    # CmdStan is not included in r-container
+    if [ "$BUILD_TARGET" != "r-container" ]; then
+      run_in_container "ls -la /opt/cmdstan/bin/" || TEST_FAIL=1
+    fi
     run_in_container "which jags" || TEST_FAIL=1
   fi
 
