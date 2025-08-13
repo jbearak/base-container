@@ -101,6 +101,26 @@ ARG DEBIAN_FRONTEND=noninteractive
 #   git                        : Version control (nvim plugins need this)
 #   fd-find                    : Fast file finder (used by nvim telescope)
 #   tree-sitter-cli            : Parser generator tool (nvim syntax highlighting)
+#
+# Graphics libraries (REQUIRED AT RUNTIME for R plotting/graphics):
+#   libfontconfig1-dev         : Font configuration (R plots need fonts)
+#   libharfbuzz-dev            : Text shaping (complex text rendering in plots)
+#   libfribidi-dev             : Unicode bidirectional text (RTL languages in plots)
+#   libfreetype6-dev           : Font rendering (all R text output)
+#   libcairo2-dev              : 2D graphics library (Cairo graphics device in R)
+#   libx11-dev                 : X11 windowing system (R graphics devices)
+#   librsvg2-dev               : SVG rendering library (for SVG graphics in R)
+#
+# Geospatial libraries (REQUIRED AT RUNTIME for R spatial packages like sf, terra):
+#   libgdal-dev, gdal-bin      : Geospatial data processing
+#   libproj-dev, proj-*        : Cartographic projections library
+#   libgeos-dev                : Geometry processing library
+#   libudunits2-*              : Units of measurement library
+#
+# NOTE: These libraries are needed at RUNTIME, not just build-time:
+# - Graphics libraries: R plotting functions need X11, Cairo, fonts even for file output
+# - Geospatial libraries: sf, terra, raster packages need GDAL/PROJ/GEOS at runtime
+# - The -dev packages provide headers for compilation AND runtime libraries
 # ---------------------------------------------------------------------------
 RUN apt-get update -qq && apt-get -y upgrade && \
     apt-get update -qq && \
