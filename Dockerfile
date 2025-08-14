@@ -760,7 +760,7 @@ RUN set -e; \
     PANDOC_DEB_URL="$(\
       echo "$RELEASE_INFO" | \
       grep browser_download_url | \
-      grep "\-${ARCH}\\.deb" | \
+      grep \"-${ARCH}\\.deb\" | \
       head -n 1 | cut -d '"' -f 4 \
     )"; \
     if [ -n "$PANDOC_DEB_URL" ]; then \
@@ -777,7 +777,7 @@ RUN set -e; \
       PANDOC_TAR_URL="$(\
         echo "$RELEASE_INFO" | \
         grep browser_download_url | \
-        grep "linux-${ARCH}\\.tar.gz" | \
+        grep \"linux-${ARCH}\\.tar.gz\" | \
         head -n 1 | cut -d '"' -f 4 \
       )"; \
       echo "Downloading Pandoc tarball from: ${PANDOC_TAR_URL}"; \
@@ -931,7 +931,7 @@ RUN set -e; \
         ;; \
     esac; \
     # Get the pandoc version for compatibility info
-    PANDOC_VERSION=$(pandoc --version | head -n 1 | sed 's/pandoc //'); \
+    PANDOC_VERSION=$(pandoc --version | head -n 1 | sed 's/pandoc //'); 
     echo "Installed pandoc-crossref for Pandoc version: ${PANDOC_VERSION}"; \
     # Verify installation
     echo "Verifying pandoc-crossref build..."; \
@@ -1208,7 +1208,7 @@ ARG DEBUG_PACKAGES=false
 RUN set -e; \
     # Detect R version and architecture for segregated libraries
     R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
-    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).* /\1/'); \
     TARGETARCH=$(dpkg --print-architecture); \
     echo "Setting up R library for R ${R_MM} on ${TARGETARCH}"; \
     # Create architecture-specific site library directory
@@ -1232,7 +1232,7 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     echo "Installing pak package manager..."; \
     # Set up environment for R package installation
     R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
-    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).* /\1/'); \
     TARGETARCH=$(dpkg --print-architecture); \
     export R_LIBS_SITE="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
     export R_COMPILE_PKGS=1; \
@@ -1263,7 +1263,7 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     # NOTE: Environment setup is duplicated from pak installation RUN command above
     # because Docker doesn't persist exported variables between separate RUN commands
     R_VERSION=$(R --version | head -n1 | sed 's/R version \([0-9.]*\).*/\1/'); \
-    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).*/\1/'); \
+    R_MM=$(echo "$R_VERSION" | sed 's/\([0-9]*\.[0-9]*\).* /\1/'); \
     TARGETARCH=$(dpkg --print-architecture); \
     export R_LIBS_SITE="/opt/R/site-library/${R_MM}-${TARGETARCH}"; \
     export R_COMPILE_PKGS=1; \
