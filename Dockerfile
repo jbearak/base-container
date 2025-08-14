@@ -757,7 +757,7 @@ RUN set -e; \
     RELEASE_INFO=$(curl -s https://api.github.com/repos/jgm/pandoc/releases/latest); \
     PANDOC_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing Pandoc version: ${PANDOC_VERSION}"; \
-    PANDOC_DEB_URL="$(
+    PANDOC_DEB_URL="$(\
       echo "$RELEASE_INFO" | \
       grep browser_download_url | \
       grep "\-${ARCH}\\.deb" | \
@@ -774,7 +774,7 @@ RUN set -e; \
       rm /tmp/pandoc.deb; \
     else 
       echo "No .deb asset found for ${ARCH}. Falling back to tarball."; \
-      PANDOC_TAR_URL="$(
+      PANDOC_TAR_URL="$(\
         echo "$RELEASE_INFO" | \
         grep browser_download_url | \
         grep "linux-${ARCH}\\.tar.gz" | \
@@ -995,7 +995,7 @@ RUN set -e; \
             echo "⚠️ soul.sty installed but not found by kpsewhich"; \
         fi; \
     else 
-        echo "soul.sty found in system TeX Live installation"; \
+        echo "soul.sty found in system TeX Live installation"; 
     fi
 
 # Switch back to root for any remaining system-level setup
