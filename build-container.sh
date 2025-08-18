@@ -1,9 +1,22 @@
 #!/bin/bash
 # This script builds the development container image. It supports building specific Dockerfile targets and optional post-build tests.
+#
+# WHY THIS SCRIPT EXISTS:
+# Our Dockerfile has many stages (base, base-nvim, base-nvim-tex, etc.) that build on each other.
+# This script lets you build any specific stage for testing, or build the final containers.
+# It's like having multiple different development environments you can choose from.
+#
+# TWO MAIN CONTAINER TYPES:
+# 1. full-container: Complete development environment with all tools (larger, ~4GB)
+# 2. r-container: Optimized for R analysis in CI/CD (smaller, ~2GB, build tools removed)
+#
+# ARCHITECTURE-SPECIFIC NAMING:
+# Images are named with their architecture: full-container-arm64, r-container-amd64, etc.
+# This lets you build and test containers for different CPU types on the same machine.
 
 # build-container.sh - Build and optionally test the dev container
 
-set -e
+set -e  # Exit immediately if any command fails
 
 # Color definitions for consistent output
 RED='\033[0;31m'
@@ -45,11 +58,15 @@ REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"  # Auto-detects 
 # Helpers to reduce duplication in docker run checks
 
 # Function to get architecture suffix for consistent naming
+# WHY WE NEED THIS: Docker images are platform-specific. An image built on an Apple Silicon Mac
+# only works on ARM processors. An image built on an Intel Mac only works on x86 processors.
+# We add the architecture to the image name so you can tell them apart and build both types.
 get_host_arch() {
   case "$(uname -m)" in
-    x86_64) echo "amd64" ;;
-    aarch64|arm64) echo "arm64" ;;
+    x86_64) echo "amd64" ;;      # Intel/AMD processors (most cloud servers, older Macs)
+    aarch64|arm64) echo "arm64" ;; # Apple Silicon Macs, ARM servers
     *) 
+      # If running on an unsupported architecture, fail immediately with a clear error
       echo "❌ ERROR: Unsupported architecture: $(uname -m)" >&2
       echo "Supported architectures: x86_64, aarch64, arm64" >&2
       exit 1
@@ -57,12 +74,16 @@ get_host_arch() {
   esac
 }
 
+# Function to build a single target (one stage of the Dockerfile)
+# WHY THIS IS A FUNCTION: Our Dockerfile has many stages that build on each other.
+# This function handles the common build logic and creates consistently named images.
 build_single_target() {
-  local target="$1"
+  local target="$1"  # Which Dockerfile stage to build (e.g., "full-container", "base-nvim")
   local host_arch=$(get_host_arch)
   
   # Create arch-specific image names for consistency
   # Examples: "full-container-arm64", "r-container-amd64"
+  # WHY: This lets you have both ARM and Intel versions of the same container
   local container_name="${target}-${host_arch}"
   local image_tag="${target}-${host_arch}"
   
@@ -96,6 +117,12 @@ build_single_target() {
   mkdir -p "$(dirname "$METADATA_FILE")"
 
   # Build the image with BuildKit metadata for compressed size, and load locally
+  # WHY THESE FLAGS:
+  # --target: Build only up to this stage in the multi-stage Dockerfile
+  # --metadata-file: Save build info (like compressed size) to a JSON file
+  # --load: Save the image locally so you can run it with "docker run"
+  # --build-arg BUILDKIT_INLINE_CACHE=1: Embed cache info in the image layers
+  # --progress=plain: Show detailed build output (not just a progress bar)
   if docker buildx build ${NO_CACHE} ${DEBUG_MODE} ${TARGET_CACHE_MODE} \
     --progress=plain \
     --target "${target}" \
@@ -480,6 +507,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # If no target was specified, build both full-container and r-container
+# WHY WE BUILD BOTH BY DEFAULT: Most users want both containers - the full development
+# environment for interactive work, and the optimized R container for automated analysis.
+# Building both ensures you have options for different use cases.
 if [ -z "$BUILD_TARGET" ]; then
   BUILD_MULTIPLE=true
   echo "🏗️  No target specified - building both full-container and r-container..."
@@ -537,6 +567,9 @@ human_size() {
 }
 
 # Main build logic
+# Build multiple containers (both full-container and r-container)
+# WHY WE CONTINUE ON FAILURE: If one container fails to build, we still want to try
+# building the other one. This gives you partial success instead of total failure.
 if [ "$BUILD_MULTIPLE" = "true" ]; then
   # Build both targets - continue even if one fails to get aggregate result
   # Initialize failure flag (0 = no failures yet, will be set to 1 if any build fails)
