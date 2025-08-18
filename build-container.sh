@@ -5,6 +5,30 @@
 
 set -e
 
+# Color definitions for consistent output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
 # Configuration
 CONTAINER_NAME="base-container"
 IMAGE_TAG="latest"
@@ -25,7 +49,11 @@ get_host_arch() {
   case "$(uname -m)" in
     x86_64) echo "amd64" ;;
     aarch64|arm64) echo "arm64" ;;
-    *) echo "unknown" ;;
+    *) 
+      echo "❌ ERROR: Unsupported architecture: $(uname -m)" >&2
+      echo "Supported architectures: x86_64, aarch64, arm64" >&2
+      exit 1
+      ;;
   esac
 }
 
@@ -444,7 +472,7 @@ while [[ $# -gt 0 ]]; do
     exit 0
     ;;
   *)
-    echo "Unknown option $1"
+    print_error "Unknown option: $1"
     echo "Use --help for usage information"
     exit 1
     ;;

@@ -88,7 +88,11 @@ get_host_arch() {
     case "$(uname -m)" in
         x86_64) echo "amd64" ;;
         aarch64|arm64) echo "arm64" ;;
-        *) echo "unknown" ;;
+        *) 
+            print_error "Unsupported architecture: $(uname -m)"
+            print_error "Supported architectures: x86_64, aarch64, arm64"
+            exit 1
+            ;;
     esac
 }
 
@@ -264,12 +268,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate target
-VALID_TARGETS=("full-container" "r-container")
+TARGETS=("full-container" "r-container")
 if [[ "$PUSH_ALL" == "false" ]]; then
     # Specific target was provided with -t flag
-    if [[ ! " ${VALID_TARGETS[@]} " =~ " ${TARGET} " ]]; then
+    if [[ ! " ${TARGETS[@]} " =~ " ${TARGET} " ]]; then
         print_error "Invalid target: $TARGET"
-        print_error "Valid targets: ${VALID_TARGETS[*]}"
+        print_error "Valid targets: ${TARGETS[*]}"
         exit 1
     fi
 fi
@@ -324,7 +328,7 @@ else
     # Default behavior: push existing local images (host platform)
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushing all targets (host platform)..."
-        for target in "${VALID_TARGETS[@]}"; do
+        for target in "${TARGETS[@]}"; do
             echo
             print_status "Processing target: $target"
             

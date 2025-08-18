@@ -4,7 +4,7 @@
 set -e
 
 PLATFORM="linux/amd64"
-TARGET="${1:-base}"
+TARGET="${1:-full-container}"
 IMAGE_TAG="${TARGET}-amd64"
 
 echo "🏗️  Building ${TARGET} for ${PLATFORM}..."
