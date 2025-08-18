@@ -250,7 +250,7 @@ test_r_container_optimized() {
   
   # Test that git-lfs is present
   echo "  Verifying git-lfs availability..."
-  if run_in_container "$container_ref" "git lfs version >/dev/null 2>&1"; then
+  if run_in_container "$container_ref" "git lfs version" >/dev/null 2>&1; then
     echo "    ✅ git-lfs available"
   else
     echo "    ❌ git-lfs missing"
