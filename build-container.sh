@@ -427,6 +427,13 @@ else
 fi
 
 # Helper function to print container usage examples
+# print_container_usage
+# Prints usage examples for a given container image.
+# Arguments:
+#   $1 - container_name: Name of the container (e.g., "r-container" or "full-container").
+#   $2 - image_tag: Tag of the container image (e.g., "latest").
+#   $3 - is_single_target (optional): If "true", prints additional commands for testing and pushing the image.
+#        If omitted or "false", prints only basic usage examples.
 print_container_usage() {
   local container_name="$1"
   local image_tag="$2"
