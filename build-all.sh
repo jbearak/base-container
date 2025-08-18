@@ -42,7 +42,11 @@ get_arch_suffix() {
     case "$platform" in
         "linux/arm64") echo "arm64" ;;
         "linux/amd64") echo "amd64" ;;
-        *) echo "unknown" ;;
+        *) 
+            print_error "Unsupported platform: $platform"
+            print_error "Supported platforms: linux/arm64, linux/amd64"
+            exit 1
+            ;;
     esac
 }
 
