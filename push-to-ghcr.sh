@@ -87,6 +87,14 @@ check_local_image() {
         return 0
     elif docker image inspect "${LOCAL_IMAGE_NAME}:${target}" >/dev/null 2>&1; then
         return 0
+    elif docker image inspect "r-container:${tag}" >/dev/null 2>&1 && [[ "$target" == "r-container" ]]; then
+        return 0
+    elif docker image inspect "r-container:${target}" >/dev/null 2>&1 && [[ "$target" == "r-container" ]]; then
+        return 0
+    elif docker image inspect "full-container:${tag}" >/dev/null 2>&1 && [[ "$target" == "full-container" ]]; then
+        return 0
+    elif docker image inspect "full-container:${target}" >/dev/null 2>&1 && [[ "$target" == "full-container" ]]; then
+        return 0
     else
         return 1
     fi
