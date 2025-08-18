@@ -7,12 +7,98 @@ set -e
 
 CONTAINER_NAME="base-container"
 IMAGE_TAG="latest"
-BUILD_TARGET="full-container" # Default to full build
+BUILD_TARGET="" # Will be set to build both full-container and r-container if not specified
+BUILD_MULTIPLE=false
 DEBUG_MODE=""
 CACHE_REGISTRY=""
 CACHE_MODE=""
 
 # Helpers to reduce duplication in docker run checks
+build_single_target() {
+  local target="$1"
+  local container_name="$2"
+  local image_tag="$3"
+  
+  echo "🏗️  Building target: ${target}..."
+  
+  # Use target-specific cache keys for better cache isolation
+  TARGET_CACHE_MODE=""
+  if [ -n "$CACHE_REGISTRY" ]; then
+    if [[ "$CACHE_MODE" == *"--cache-from"* ]]; then
+      TARGET_CACHE_MODE="--cache-from type=registry,ref=${CACHE_REGISTRY}/cache:${target}"
+    fi
+    if [[ "$CACHE_MODE" == *"--cache-to"* ]]; then
+      TARGET_CACHE_MODE="${TARGET_CACHE_MODE} --cache-to type=registry,ref=${CACHE_REGISTRY}/cache:${target},mode=max"
+    fi
+  else
+    # If no registry cache is specified, use local cache by default (unless --no-cache is used)
+    if [ -z "$NO_CACHE" ]; then
+      TARGET_CACHE_MODE="--cache-from type=local,src=/tmp/.buildx-cache --cache-to type=local,dest=/tmp/.buildx-cache,mode=max"
+      echo "🗂️  Using local BuildKit cache at /tmp/.buildx-cache"
+    else
+      TARGET_CACHE_MODE="$CACHE_MODE"
+    fi
+  fi
+
+  # Image reference and metadata file path
+  IMAGE_REF="${container_name}:${image_tag}"
+  METADATA_FILE="build/build_metadata_${target}.json"
+  mkdir -p "$(dirname "$METADATA_FILE")"
+
+  # Build the image with BuildKit metadata for compressed size, and load locally
+  if docker buildx build ${NO_CACHE} ${DEBUG_MODE} ${TARGET_CACHE_MODE} \
+    --progress=plain \
+    --target "${target}" \
+    --build-arg BUILDKIT_INLINE_CACHE=1 \
+    --metadata-file "${METADATA_FILE}" \
+    --load \
+    -t "${IMAGE_REF}" \
+    .; then
+    echo "✅ Container built successfully for target: ${target}!"
+  else
+    build_exit_code=$?
+    echo
+    echo "❌ Container build failed for target: ${target}!"
+    return $build_exit_code
+  fi
+
+  # Print size information
+  print_size_info "$IMAGE_REF" "$METADATA_FILE"
+  
+  return 0
+}
+
+# Function to print size information
+print_size_info() {
+  local image_ref="$1"
+  local metadata_file="$2"
+  
+  # Print compressed (push) size from BuildKit metadata if available
+  if command -v jq >/dev/null 2>&1 && [ -s "${metadata_file}" ]; then
+    compressed_bytes=$(jq -r '."containerimage.descriptor".size // empty' "${metadata_file}" || true)
+    if [ -n "${compressed_bytes}" ] && [ "${compressed_bytes}" != "null" ]; then
+      echo "📦 Compressed (push) size: $(human_size "${compressed_bytes}")"
+    else
+      echo "📦 Compressed (push) size: unavailable (no descriptor in metadata)"
+    fi
+  else
+    echo "📦 Compressed (push) size: unavailable (metadata file missing or jq not installed)"
+  fi
+
+  # Print uncompressed local image size
+  uncompressed_bytes=$(docker image inspect "${image_ref}" --format '{{.Size}}' 2>/dev/null || true)
+  if [ -n "${uncompressed_bytes}" ]; then
+    echo "🗜️  Uncompressed (local) size: $(human_size "${uncompressed_bytes}")"
+  else
+    echo "🗜️  Uncompressed (local) size: unavailable"
+  fi
+
+  # Show recent layer sizes/commands for quick feedback
+  if docker history --no-trunc "${image_ref}" >/dev/null 2>&1; then
+    echo "📚 Layer history (most recent first):"
+    docker history --no-trunc "${image_ref}" | sed -n '1,15p'
+  fi
+}
 run_in_container() {
   local my_cmd="$1"
   docker run --rm "${CONTAINER_NAME}:${IMAGE_TAG}" bash -lc "$my_cmd"
@@ -321,6 +407,7 @@ while [[ $# -gt 0 ]]; do
     echo "  $0 --base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak  # Build with Python + R + R packages"
     echo "  $0 --full --no-cache              # Full clean build"
     echo "  $0 --full --cache-from-to ghcr.io/user/repo  # Use registry cache"
+    echo "  $0                                # Build both full-container and r-container (default)"
     exit 0
     ;;
   *)
@@ -331,48 +418,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "🏗️  Building dev container image (target: ${BUILD_TARGET})..."
-
-# Use target-specific cache keys for better cache isolation
-TARGET_CACHE_MODE=""
-if [ -n "$CACHE_REGISTRY" ]; then
-  if [[ "$CACHE_MODE" == *"--cache-from"* ]]; then
-    TARGET_CACHE_MODE="--cache-from type=registry,ref=${CACHE_REGISTRY}/cache:${BUILD_TARGET}"
-  fi
-  if [[ "$CACHE_MODE" == *"--cache-to"* ]]; then
-    TARGET_CACHE_MODE="${TARGET_CACHE_MODE} --cache-to type=registry,ref=${CACHE_REGISTRY}/cache:${BUILD_TARGET},mode=max"
-  fi
+# If no target was specified, build both full-container and r-container
+if [ -z "$BUILD_TARGET" ]; then
+  BUILD_MULTIPLE=true
+  echo "🏗️  No target specified - building both full-container and r-container..."
 else
-  # If no registry cache is specified, use local cache by default (unless --no-cache is used)
-  if [ -z "$NO_CACHE" ]; then
-    TARGET_CACHE_MODE="--cache-from type=local,src=/tmp/.buildx-cache --cache-to type=local,dest=/tmp/.buildx-cache,mode=max"
-    echo "🗂️  Using local BuildKit cache at /tmp/.buildx-cache"
-  else
-    TARGET_CACHE_MODE="$CACHE_MODE"
-  fi
-fi
-
-# Use docker buildx for better caching support
-# Image reference and metadata file path
-IMAGE_REF="${CONTAINER_NAME}:${IMAGE_TAG}"
-METADATA_FILE="build/build_metadata.json"
-mkdir -p "$(dirname "$METADATA_FILE")"
-
-# Build the image with BuildKit metadata for compressed size, and load locally
-if docker buildx build ${NO_CACHE} ${DEBUG_MODE} ${TARGET_CACHE_MODE} \
-  --progress=plain \
-  --target "${BUILD_TARGET}" \
-  --build-arg BUILDKIT_INLINE_CACHE=1 \
-  --metadata-file "${METADATA_FILE}" \
-  --load \
-  -t "${IMAGE_REF}" \
-  .; then
-  echo "✅ Container built successfully!"
-else
-  build_exit_code=$?
-  echo
-  echo "❌ Container build failed!"
-  exit $build_exit_code
+  echo "🏗️  Building dev container image (target: ${BUILD_TARGET})..."
 fi
 
 # Helper to render bytes to human size without requiring numfmt
@@ -389,122 +440,201 @@ human_size() {
     } BEGIN { human(b) }'
 }
 
-# Print compressed (push) size from BuildKit metadata if available
-if command -v jq >/dev/null 2>&1 && [ -s "${METADATA_FILE}" ]; then
-  compressed_bytes=$(jq -r '."containerimage.descriptor".size // empty' "${METADATA_FILE}" || true)
-  if [ -n "${compressed_bytes}" ] && [ "${compressed_bytes}" != "null" ]; then
-    echo "📦 Compressed (push) size: $(human_size "${compressed_bytes}")"
-  else
-    echo "📦 Compressed (push) size: unavailable (no descriptor in metadata)"
+# Main build logic
+if [ "$BUILD_MULTIPLE" = "true" ]; then
+  # Build both targets
+  echo "🚀 Building full-container..."
+  if ! build_single_target "full-container" "full-container" "full-container"; then
+    echo "❌ Failed to build full-container"
+    exit 1
   fi
+  
+  echo ""
+  echo "🚀 Building r-container..."
+  if ! build_single_target "r-container" "r-container" "r-container"; then
+    echo "❌ Failed to build r-container"
+    exit 1
+  fi
+  
+  echo ""
+  echo "✅ Both containers built successfully!"
+  
 else
-  echo "📦 Compressed (push) size: unavailable (metadata file missing or jq not installed)"
-fi
-
-# Print uncompressed local image size
-uncompressed_bytes=$(docker image inspect "${IMAGE_REF}" --format '{{.Size}}' 2>/dev/null || true)
-if [ -n "${uncompressed_bytes}" ]; then
-  echo "🗜️  Uncompressed (local) size: $(human_size "${uncompressed_bytes}")"
-else
-  echo "🗜️  Uncompressed (local) size: unavailable"
-fi
-
-# Show recent layer sizes/commands for quick feedback
-if docker history --no-trunc "${IMAGE_REF}" >/dev/null 2>&1; then
-  echo "📚 Layer history (most recent first):"
-  docker history --no-trunc "${IMAGE_REF}" | sed -n '1,15p'
-fi
-
-# Optionally test the container
-if [ "$TEST_CONTAINER" = "true" ]; then
-  echo "🧪 Testing container..."
-  TEST_FAIL=0
-
-  echo "🔧 Testing basic system tools..."
-  run_in_container "which zsh"
-  run_in_container "R --version"
-
-  if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-    test_vscode || TEST_FAIL=1
-  fi
-
-  # LaTeX presence by stages
-  if [ "$BUILD_TARGET" = "base-nvim-tex" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-    test_latex_basic || TEST_FAIL=1
-
-    if [ "$BUILD_TARGET" = "base-nvim-tex" ]; then
-      echo "🚫 Verifying Pandoc is NOT installed in tex stage..."
-      if run_in_container "which pandoc"; then
-        echo "⚠️  Pandoc found but should not be in tex stage"
-        TEST_FAIL=1
-      else
-        echo "✅ Pandoc correctly absent from tex stage"
-      fi
-    fi
-  fi
-
-  # Pandoc tests
-  if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-    test_pandoc || TEST_FAIL=1
-  fi
-
-  # Extra LaTeX packages
-  if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-    test_pandoc_plus || TEST_FAIL=1
-  fi
-
-  echo "📋 Checking for copied configuration files..."
-  run_in_container 'ls -la /home/me/ | grep -E "\.(zprofile|tmux\.conf|lintr|Rprofile|bash_profile|npmrc)$"'
-
-  # nvim stages and later
-  if [ "$BUILD_TARGET" = "base-nvim" ] || [ "$BUILD_TARGET" = "base-nvim-tex" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-    test_nvim_and_plugins || TEST_FAIL=1
-  fi
-
-  # Dev tools are intentionally not present in r-container
-  if [ "$BUILD_TARGET" != "r-container" ]; then
-    test_dev_tools || TEST_FAIL=1
-  fi
-
-  # R installation tests (new stage 10)
-  if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
-    echo "📐 Testing R installation..."
-    run_in_container "R --version" || TEST_FAIL=1
-    # CmdStan is not included in r-container
-    if [ "$BUILD_TARGET" != "r-container" ]; then
-      run_in_container "ls -la /opt/cmdstan/bin/" || TEST_FAIL=1
-    fi
-    run_in_container "which jags" || TEST_FAIL=1
-  fi
-
-  # R package tests (moved to stage 11)
-  if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
-    echo "📦 Testing R package installation..."
-    if ! run_in_container 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'; then
-      TEST_FAIL=1
-    fi
-  fi
-
-  # r-container specific optimization tests
-  if [ "$BUILD_TARGET" = "r-container" ]; then
-    test_r_container_optimized || TEST_FAIL=1
-  fi
-
-  # Python tests (moved to stage 9)
-  if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-    test_python313 || TEST_FAIL=1
-  fi
-
-  if [ "$TEST_FAIL" -eq 0 ]; then
-    echo "✅ Container tests passed!"
-  else
-    echo "❌ Container tests failed"
+  # Build single target
+  # Set container name and image tag based on target
+  case "$BUILD_TARGET" in
+    "r-container")
+      CONTAINER_NAME="r-container"
+      IMAGE_TAG="r-container"
+      ;;
+    "full-container")
+      CONTAINER_NAME="full-container"
+      IMAGE_TAG="full-container"
+      ;;
+  esac
+  
+  if ! build_single_target "$BUILD_TARGET" "$CONTAINER_NAME" "$IMAGE_TAG"; then
+    echo "❌ Failed to build $BUILD_TARGET"
     exit 1
   fi
 fi
 
+# Optionally test the container
+if [ "$TEST_CONTAINER" = "true" ]; then
+  if [ "$BUILD_MULTIPLE" = "true" ]; then
+    echo "🧪 Testing both containers..."
+    
+    # Test full-container
+    echo "🧪 Testing full-container..."
+    BUILD_TARGET="full-container"
+    CONTAINER_NAME="full-container"
+    IMAGE_TAG="full-container"
+    TEST_FAIL=0
+    
+    echo "🔧 Testing basic system tools..."
+    run_in_container "which zsh"
+    run_in_container "R --version"
+    
+    test_vscode || TEST_FAIL=1
+    test_latex_basic || TEST_FAIL=1
+    test_pandoc || TEST_FAIL=1
+    test_pandoc_plus || TEST_FAIL=1
+    test_nvim_and_plugins || TEST_FAIL=1
+    test_dev_tools || TEST_FAIL=1
+    test_python313 || TEST_FAIL=1
+    
+    echo "📋 Checking for copied configuration files..."
+    run_in_container 'ls -la /home/me/ | grep -E "\.(zprofile|tmux\.conf|lintr|Rprofile|bash_profile|npmrc)$"'
+    
+    if [ "$TEST_FAIL" -eq 0 ]; then
+      echo "✅ full-container tests passed!"
+    else
+      echo "❌ full-container tests failed"
+      exit 1
+    fi
+    
+    # Test r-container
+    echo ""
+    echo "🧪 Testing r-container..."
+    BUILD_TARGET="r-container"
+    CONTAINER_NAME="r-container"
+    IMAGE_TAG="r-container"
+    TEST_FAIL=0
+    
+    echo "🔧 Testing basic system tools..."
+    run_in_container "which zsh"
+    run_in_container "R --version"
+    
+    test_r_container_optimized || TEST_FAIL=1
+    
+    if [ "$TEST_FAIL" -eq 0 ]; then
+      echo "✅ r-container tests passed!"
+    else
+      echo "❌ r-container tests failed"
+      exit 1
+    fi
+    
+    echo "✅ All container tests passed!"
+    
+  else
+    # Single target testing (existing logic)
+    echo "🧪 Testing container..."
+    TEST_FAIL=0
+
+    echo "🔧 Testing basic system tools..."
+    run_in_container "which zsh"
+    run_in_container "R --version"
+
+    if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
+      test_vscode || TEST_FAIL=1
+    fi
+
+    # LaTeX presence by stages
+    if [ "$BUILD_TARGET" = "base-nvim-tex" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
+      test_latex_basic || TEST_FAIL=1
+
+      if [ "$BUILD_TARGET" = "base-nvim-tex" ]; then
+        echo "🚫 Verifying Pandoc is NOT installed in tex stage..."
+        if run_in_container "which pandoc"; then
+          echo "⚠️  Pandoc found but should not be in tex stage"
+          TEST_FAIL=1
+        else
+          echo "✅ Pandoc correctly absent from tex stage"
+        fi
+      fi
+    fi
+
+    # Pandoc tests
+    if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
+      test_pandoc || TEST_FAIL=1
+    fi
+
+    # Extra LaTeX packages
+    if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
+      test_pandoc_plus || TEST_FAIL=1
+    fi
+
+    echo "📋 Checking for copied configuration files..."
+    run_in_container 'ls -la /home/me/ | grep -E "\.(zprofile|tmux\.conf|lintr|Rprofile|bash_profile|npmrc)$"'
+
+    # nvim stages and later
+    if [ "$BUILD_TARGET" = "base-nvim" ] || [ "$BUILD_TARGET" = "base-nvim-tex" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
+      test_nvim_and_plugins || TEST_FAIL=1
+    fi
+
+    # Dev tools are intentionally not present in r-container
+    if [ "$BUILD_TARGET" != "r-container" ]; then
+      test_dev_tools || TEST_FAIL=1
+    fi
+
+    # R installation tests (new stage 10)
+    if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
+      echo "📐 Testing R installation..."
+      run_in_container "R --version" || TEST_FAIL=1
+      # CmdStan is not included in r-container
+      if [ "$BUILD_TARGET" != "r-container" ]; then
+        run_in_container "ls -la /opt/cmdstan/bin/" || TEST_FAIL=1
+      fi
+      run_in_container "which jags" || TEST_FAIL=1
+    fi
+
+    # R package tests (moved to stage 11)
+    if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
+      echo "📦 Testing R package installation..."
+      if ! run_in_container 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'; then
+        TEST_FAIL=1
+      fi
+    fi
+
+    # r-container specific optimization tests
+    if [ "$BUILD_TARGET" = "r-container" ]; then
+      test_r_container_optimized || TEST_FAIL=1
+    fi
+
+    # Python tests (moved to stage 9)
+    if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
+      test_python313 || TEST_FAIL=1
+    fi
+
+    if [ "$TEST_FAIL" -eq 0 ]; then
+      echo "✅ Container tests passed!"
+    else
+      echo "❌ Container tests failed"
+      exit 1
+    fi
+  fi
+fi
+
 echo "🎉 Done! You can now:"
-case "$BUILD_TARGET" in
+
+if [ "$BUILD_MULTIPLE" = "true" ]; then
+  echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project full-container:full-container"
+  echo "  • Test the R container: docker run -it --rm -v \$(pwd):/workspace r-container:r-container"
+  echo "  • Tag and push both containers to GitHub Container Registry:"
+  echo "    ./push-to-ghcr.sh -a"
+  echo "  • Reference in other projects' devcontainer.json files"
+else
+  case "$BUILD_TARGET" in
 "base")
   echo "  • Test the base stage with: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
   echo "  • Build with nvim plugins next with: ./build-container.sh --base-nvim"
@@ -569,11 +699,12 @@ case "$BUILD_TARGET" in
   echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
   echo "    docker push ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
   ;;
-"full-container")
-  echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Tag and push to GitHub Container Registry:"
-  echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "    docker push ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
-  ;;
-esac
-echo "  • Reference in other projects' devcontainer.json files"
+  "full-container")
+    echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
+    echo "  • Tag and push to GitHub Container Registry:"
+    echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
+    echo "    docker push ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
+    ;;
+  esac
+  echo "  • Reference in other projects' devcontainer.json files"
+fi
