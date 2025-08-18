@@ -5,7 +5,7 @@ set -e
 
 # Configuration
 REGISTRY="ghcr.io"
-REPO_OWNER="${REPO_OWNER:-jbearak}"  # Override with: export REPO_OWNER=yourusername
+REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"  # Auto-detects in GitHub Actions
 REPOSITORY="${REPO_OWNER}/base-container"
 LOCAL_IMAGE_NAME="base-container"
 DEFAULT_TAG="latest"

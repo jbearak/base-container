@@ -16,7 +16,7 @@ BUILD_MULTIPLE=false
 DEBUG_MODE=""
 CACHE_REGISTRY=""
 CACHE_MODE=""
-REPO_OWNER="${REPO_OWNER:-jbearak}"  # Override with: export REPO_OWNER=yourusername
+REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"  # Auto-detects in GitHub Actions
 
 # Helpers to reduce duplication in docker run checks
 build_single_target() {
