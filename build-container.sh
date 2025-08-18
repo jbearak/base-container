@@ -685,7 +685,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
       test_dev_tools "$container_ref" || TEST_FAIL=1
     fi
 
-    # R installation tests (new stage 10)
+    # R installation tests
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
       echo "📐 Testing R installation..."
       run_in_container "$container_ref" "R --version" || TEST_FAIL=1
@@ -696,7 +696,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
       run_in_container "$container_ref" "which jags" || TEST_FAIL=1
     fi
 
-    # R package tests (moved to stage 11)
+    # R package tests
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
       echo "📦 Testing R package installation..."
       if ! run_in_container "$container_ref" 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'; then
@@ -709,7 +709,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
       test_r_container_optimized "$container_ref" || TEST_FAIL=1
     fi
 
-    # Python tests (moved to stage 9)
+    # Python tests
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
       test_python313 "$container_ref" || TEST_FAIL=1
     fi
