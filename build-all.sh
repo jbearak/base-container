@@ -2,6 +2,9 @@
 # Build all combinations: 2 architectures × 2 targets = 4 images
 # Builds: full-container and r-container for both arm64 and amd64
 
+# Exit immediately if any command fails (fail-fast behavior)
+# This prevents the script from continuing with remaining builds if one fails unexpectedly
+# Note: We handle expected build failures gracefully with explicit error checking
 set -e
 
 # Configuration
