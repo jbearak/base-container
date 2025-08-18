@@ -3,7 +3,7 @@
 
 set -e
 
-# Configuration - can be overridden with environment variables
+# Configuration
 REGISTRY="ghcr.io"
 REPO_OWNER="${REPO_OWNER:-jbearak}"  # Override with: export REPO_OWNER=yourusername
 REPOSITORY="${REPO_OWNER}/base-container"

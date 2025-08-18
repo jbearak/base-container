@@ -5,7 +5,7 @@
 
 set -e
 
-# Configuration - can be overridden with environment variables
+# Configuration
 CONTAINER_NAME="base-container"
 IMAGE_TAG="latest"
 BUILD_TARGET="" # Will be set to build both full-container and r-container if not specified
