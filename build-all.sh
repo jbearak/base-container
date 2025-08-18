@@ -77,7 +77,6 @@ build_single() {
 # Parse command line arguments
 PARALLEL=false
 TEST_IMAGES=false
-PUSH_IMAGES=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -90,10 +89,6 @@ while [[ $# -gt 0 ]]; do
             TEST_IMAGES=true
             shift
             ;;
-        --push)
-            PUSH_IMAGES=true
-            shift
-            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -104,7 +99,6 @@ while [[ $# -gt 0 ]]; do
             echo "OPTIONS:"
             echo "  --parallel    Build all images in parallel (resource intensive)"
             echo "  --test        Test each image after building"
-            echo "  --push        Push images to registry after building"
             echo "  -h, --help    Show this help message"
             echo ""
             echo "Examples:"
@@ -112,6 +106,9 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 --parallel         # Build all 4 images in parallel"
             echo "  $0 --test             # Build and test all images"
             echo "  $0 --parallel --test  # Build in parallel and test"
+            echo ""
+            echo "To push images after building, use:"
+            echo "  ./push-to-ghcr.sh -a  # Push multi-platform manifests"
             exit 0
             ;;
         *)
@@ -205,14 +202,6 @@ if [ "$TEST_IMAGES" = true ]; then
             fi
         done
     done
-fi
-
-# Push images if requested
-if [ "$PUSH_IMAGES" = true ]; then
-    echo ""
-    print_status "Pushing images to registry..."
-    print_warning "Push functionality requires registry configuration"
-    print_warning "This is a placeholder - implement push logic as needed"
 fi
 
 # Summary
