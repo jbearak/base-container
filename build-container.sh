@@ -117,6 +117,7 @@ print_size_info() {
 run_in_container() {
   local container_ref="$1"
   local my_cmd="$2"
+  # --rm = automatically remove container when it exits (cleanup, not delete the image)
   # -l = login shell (loads ~/.bashrc, ~/.profile, etc. for full environment)
   # -c = command mode (run the command string and exit)
   docker run --rm "${container_ref}" bash -lc "$my_cmd"
