@@ -113,7 +113,6 @@ build_image() {
                 return 1
                 ;;
         esac
->>>>>>> 677de53 (Fix: Replace dynamic flag construction with explicit case mapping)
     else
         print_status "Building directly with docker..."
         docker build --target "$target" -t "${LOCAL_IMAGE_NAME}:${tag}" .
