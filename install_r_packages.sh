@@ -66,6 +66,9 @@ install_packages_with_pak() {
     packages <- readLines('$PACKAGES_FILE')
     packages <- packages[packages != '']  # Remove empty lines
     
+    # Exclude rstanarm for separate installation with progress messaging
+    packages <- packages[packages != 'rstanarm']
+    
     cat('Installing', length(packages), 'packages with pak...\\n')
     
     # Configure pak to show building messages but suppress detailed output
@@ -203,6 +206,47 @@ else
         echo "❌"
         failed_packages+=("mcmcplots")
     fi
+fi
+
+# Install rstanarm from CRAN with explicit progress messaging (if not excluded)
+if grep -q "^rstanarm$" "$PACKAGES_FILE"; then
+    echo -n "📈 Installing rstanarm from CRAN with pak... "
+    rstanarm_command="
+library(pak)
+cat('📦 Building rstanarm...\\n')
+flush.console()
+tryCatch({
+    start_time <- Sys.time()
+    pak::pkg_install('rstanarm')
+    end_time <- Sys.time()
+    duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
+    cat('✅ Built rstanarm in', duration, 'seconds\\n')
+    cat('SUCCESS\\n')
+}, error = function(e) {
+    cat('ERROR:', conditionMessage(e), '\\n')
+    quit(status = 1)
+})
+"
+
+    if [[ "$DEBUG_MODE" == "true" ]]; then
+        if echo "$rstanarm_command" | R --slave --no-restore; then
+            echo "✅"
+            ((installed_count++))
+        else
+            echo "❌"
+            failed_packages+=("rstanarm")
+        fi
+    else
+        if echo "$rstanarm_command" | R --slave --no-restore >/dev/null 2>&1; then
+            echo "✅"
+            ((installed_count++))
+        else
+            echo "❌"
+            failed_packages+=("rstanarm")
+        fi
+    fi
+else
+    echo "ℹ️  rstanarm excluded from package list, skipping separate installation"
 fi
 
 # Install httpgd from GitHub using pak
