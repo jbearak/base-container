@@ -53,9 +53,8 @@ start_time=$(date +%s)
 installed_count=0
 failed_packages=()
 
-# Function to install packages using pak with simple progress reporting
+# Function to install packages using pak with simple progress reporting  
 install_packages_with_pak() {
-    local packages_list="$1"
     echo "📦 Installing CRAN packages with pak..."
     
     # Create R script for pak installation with simple progress reporting
@@ -126,7 +125,6 @@ install_package_individual() {
     }"
     
     echo -n "📦 Installing $package... "
-    package_start=$(date +%s)
     
     # Capture R output
     local r_output
