@@ -92,6 +92,18 @@ get_host_arch() {
     esac
 }
 
+# Function to get display tag for success messages
+get_display_tag() {
+    local target="$1"
+    local tag="$2"
+    
+    if [[ "$target" == "r-container" ]]; then
+        echo "r-${tag}"
+    else
+        echo "${tag}"
+    fi
+}
+
 # Function to check if local image exists
 check_local_image() {
     local target="$1"
@@ -343,11 +355,9 @@ if [[ "$ALL_PLATFORMS" == "true" ]]; then
         print_status "  - r-container:r-${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
     else
         print_status "Pushed single container (multi-platform: linux/amd64,linux/arm64):"
-        if [[ "$TARGET" == "r-container" ]]; then
-            print_status "  - r-container:r-${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
-        else
-            print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
-        fi
+        local display_tag="${TAG}"
+        [[ "$TARGET" == "r-container" ]] && display_tag="r-${TAG}"
+        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
     fi
 else
     if [[ "$PUSH_ALL" == "true" ]]; then
@@ -356,11 +366,9 @@ else
         print_status "  - r-container:r-${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
     else
         print_status "Pushed single container (host platform only):"
-        if [[ "$TARGET" == "r-container" ]]; then
-            print_status "  - r-container:r-${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
-        else
-            print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
-        fi
+        local display_tag="${TAG}"
+        [[ "$TARGET" == "r-container" ]] && display_tag="r-${TAG}"
+        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
         echo
         print_status "💡 To push both containers, run without -t flag: $0"
         print_status "💡 To push multi-platform images, add -a flag: $0 -a"
