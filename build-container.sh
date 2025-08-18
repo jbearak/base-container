@@ -107,6 +107,8 @@ print_size_info() {
   fi
 
   # Show recent layer sizes/commands for quick feedback
+  # Check if docker history command runs without error (image exists and is accessible)
+  # >/dev/null 2>&1 hides the output - we only care if the command succeeds
   if docker history --no-trunc "${image_ref}" >/dev/null 2>&1; then
     echo "📚 Layer history (most recent first):"
     docker history --no-trunc "${image_ref}" | sed -n '1,15p'
