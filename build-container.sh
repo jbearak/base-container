@@ -514,6 +514,7 @@ human_size() {
 # Main build logic
 if [ "$BUILD_MULTIPLE" = "true" ]; then
   # Build both targets - continue even if one fails to get aggregate result
+  # Initialize failure flag (0 = no failures yet, will be set to 1 if any build fails)
   BUILD_FAILED=0
   
   echo "🚀 Building full-container..."
