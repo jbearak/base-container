@@ -5,10 +5,11 @@ set -e
 
 # Configuration
 REGISTRY="ghcr.io"
-REPOSITORY="jbearak/base-container"
+REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"  # Auto-detects in GitHub Actions
+REPOSITORY="${REPO_OWNER}/base-container"
 LOCAL_IMAGE_NAME="base-container"
 DEFAULT_TAG="latest"
-DEFAULT_TARGET="full"
+DEFAULT_TARGET="full-container"
 
 # Colors for output
 RED='\033[0;31m'
@@ -42,21 +43,19 @@ Usage: $0 [OPTIONS]
 Push Docker images to GitHub Container Registry (GHCR)
 
 OPTIONS:
-    -t, --target TARGET     Build target to push (default: $DEFAULT_TARGET)
-                           Available targets: base, base-nvim, base-nvim-vscode, 
-                           base-nvim-vscode-tex, base-nvim-vscode-tex-pandoc, 
-                           base-nvim-vscode-tex-pandoc-plus, full
+    -t, --target TARGET     Push specific target only (default: push all targets)
+                           Available targets: full-container, r-container
     -g, --tag TAG          Tag for the image (default: $DEFAULT_TAG)
-    -a, --all              Push all build targets
     -b, --build            Build the image before pushing
     -f, --force            Force push even if image doesn't exist locally
     -h, --help             Show this help message
 
 EXAMPLES:
-    $0                                    # Push full:latest
-    $0 -t base -g v1.0.0                # Push base:v1.0.0
-    $0 -a -b                             # Build and push all targets
-    $0 --build --target full --tag dev   # Build and push full:dev
+    $0                                         # Push all targets with latest tag
+    $0 -t full-container                       # Push only full-container:latest
+    $0 -t r-container -g v1.0.0              # Push only r-container:v1.0.0
+    $0 -b                                     # Build and push all targets
+    $0 --build --target full-container --tag dev   # Build and push only full-container:dev
 
 PREREQUISITES:
     1. Docker must be installed and running
@@ -84,14 +83,21 @@ check_ghcr_login() {
 check_local_image() {
     local target="$1"
     local tag="$2"
-    
+
+    # Try standard naming pattern (e.g., "base-container:latest")
     if docker image inspect "${LOCAL_IMAGE_NAME}:${tag}" >/dev/null 2>&1; then
         return 0
-    elif docker image inspect "${LOCAL_IMAGE_NAME}:${target}" >/dev/null 2>&1; then
-        return 0
-    else
-        return 1
     fi
+
+    # Try target-specific naming patterns (e.g., "full-container:full-container")
+    local image_names=("${LOCAL_IMAGE_NAME}:${target}" "${target}:${tag}" "${target}:${target}")
+    for image in "${image_names[@]}"; do
+        if docker image inspect "$image" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 # Function to build image
@@ -103,7 +109,18 @@ build_image() {
     
     if [[ -f "./build-container.sh" ]]; then
         print_status "Using existing build script..."
-        ./build-container.sh --target "$target" --tag "$tag" --no-test
+        case "$target" in
+            "full-container")
+                ./build-container.sh --full-container
+                ;;
+            "r-container")
+                ./build-container.sh --r-container
+                ;;
+            *)
+                print_error "Unknown target for build script: $target"
+                return 1
+                ;;
+        esac
     else
         print_status "Building directly with docker..."
         docker build --target "$target" -t "${LOCAL_IMAGE_NAME}:${tag}" .
@@ -121,9 +138,9 @@ push_image() {
     local local_tag="$tag"
     local remote_image="${REGISTRY}/${REPOSITORY}:${tag}"
     
-    # If tag is 'latest' and target is not 'full', append target to tag
-    if [[ "$tag" == "latest" && "$target" != "full" ]]; then
-        remote_image="${REGISTRY}/${REPOSITORY}:${target}"
+    # For r-container, use a different repository
+    if [[ "$target" == "r-container" ]]; then
+        remote_image="${REGISTRY}/${REPO_OWNER}/r-container:${tag}"
     fi
     
     # Check if local image exists
@@ -138,6 +155,10 @@ push_image() {
         source_image="${LOCAL_IMAGE_NAME}:${tag}"
     elif docker image inspect "${LOCAL_IMAGE_NAME}:${target}" >/dev/null 2>&1; then
         source_image="${LOCAL_IMAGE_NAME}:${target}"
+    elif docker image inspect "${target}:${tag}" >/dev/null 2>&1; then
+        source_image="${target}:${tag}"
+    elif docker image inspect "${target}:${target}" >/dev/null 2>&1; then
+        source_image="${target}:${target}"
     else
         print_error "No suitable local image found"
         return 1
@@ -153,25 +174,22 @@ push_image() {
 }
 
 # Parse command line arguments
-TARGET="$DEFAULT_TARGET"
+TARGET=""  # Empty means push all targets (consistent with build script)
 TAG="$DEFAULT_TAG"
 BUILD_FIRST=false
-PUSH_ALL=false
+PUSH_ALL=true  # Default to pushing all targets
 FORCE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         -t|--target)
             TARGET="$2"
+            PUSH_ALL=false  # Specific target means don't push all
             shift 2
             ;;
         -g|--tag)
             TAG="$2"
             shift 2
-            ;;
-        -a|--all)
-            PUSH_ALL=true
-            shift
             ;;
         -b|--build)
             BUILD_FIRST=true
@@ -194,8 +212,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate target
-VALID_TARGETS=("base" "base-nvim" "base-nvim-vscode" "base-nvim-vscode-tex" "base-nvim-vscode-tex-pandoc" "base-nvim-vscode-tex-pandoc-plus" "full")
+VALID_TARGETS=("full-container" "r-container")
 if [[ "$PUSH_ALL" == "false" ]]; then
+    # Specific target was provided with -t flag
     if [[ ! " ${VALID_TARGETS[@]} " =~ " ${TARGET} " ]]; then
         print_error "Invalid target: $TARGET"
         print_error "Valid targets: ${VALID_TARGETS[*]}"
@@ -234,4 +253,18 @@ else
 fi
 
 print_success "All operations completed successfully!"
-print_status "Your images are now available at: https://github.com/jbearak/base-container/pkgs/container/base-container"
+
+if [[ "$PUSH_ALL" == "true" ]]; then
+    print_status "Pushed both containers:"
+    print_status "  - full-container:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+    print_status "  - r-container:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+else
+    print_status "Pushed single container:"
+    if [[ "$TARGET" == "r-container" ]]; then
+        print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+    else
+        print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+    fi
+    echo
+    print_status "💡 To push both containers, run without -t flag: $0"
+fi
