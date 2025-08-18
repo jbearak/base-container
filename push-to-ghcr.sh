@@ -98,19 +98,11 @@ check_local_image() {
     local tag="$2"
     local host_arch=$(get_host_arch)
 
-    # Try new arch-specific naming pattern (e.g., "full-container-arm64")
+    # Check for arch-specific naming pattern (e.g., "full-container-arm64")
     local arch_specific_name="${target}-${host_arch}"
     if docker image inspect "${arch_specific_name}" >/dev/null 2>&1; then
         return 0
     fi
-
-    # Try legacy naming patterns for backward compatibility
-    local legacy_names=("${LOCAL_IMAGE_NAME}:${tag}" "${LOCAL_IMAGE_NAME}:${target}" "${target}:${tag}" "${target}:${target}")
-    for image in "${legacy_names[@]}"; do
-        if docker image inspect "$image" >/dev/null 2>&1; then
-            return 0
-        fi
-    done
 
     return 1
 }
@@ -164,22 +156,12 @@ push_image() {
         return 1
     fi
     
-    # Determine which local image to use (prioritize new arch-specific naming)
-    local source_image
-    local arch_specific_name="${target}-${host_arch}"
+    # Use arch-specific naming
+    local source_image="${target}-${host_arch}"
     
-    if docker image inspect "${arch_specific_name}" >/dev/null 2>&1; then
-        source_image="${arch_specific_name}"
-    elif docker image inspect "${LOCAL_IMAGE_NAME}:${tag}" >/dev/null 2>&1; then
-        source_image="${LOCAL_IMAGE_NAME}:${tag}"
-    elif docker image inspect "${LOCAL_IMAGE_NAME}:${target}" >/dev/null 2>&1; then
-        source_image="${LOCAL_IMAGE_NAME}:${target}"
-    elif docker image inspect "${target}:${tag}" >/dev/null 2>&1; then
-        source_image="${target}:${tag}"
-    elif docker image inspect "${target}:${target}" >/dev/null 2>&1; then
-        source_image="${target}:${target}"
-    else
-        print_error "No suitable local image found"
+    if ! docker image inspect "${source_image}" >/dev/null 2>&1; then
+        print_error "Expected image ${source_image} not found"
+        print_error "Make sure to build with the current build scripts that create arch-specific names"
         return 1
     fi
     
