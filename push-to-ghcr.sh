@@ -83,12 +83,12 @@ check_local_image() {
     local target="$1"
     local tag="$2"
 
-    # Try standard naming pattern first
+    # Try standard naming pattern (e.g., "base-container:latest")
     if docker image inspect "${LOCAL_IMAGE_NAME}:${tag}" >/dev/null 2>&1; then
         return 0
     fi
 
-    # Try target-specific naming patterns
+    # Try target-specific naming patterns (e.g., "full-container:full-container")
     local image_names=("${LOCAL_IMAGE_NAME}:${target}" "${target}:${tag}" "${target}:${target}")
     for image in "${image_names[@]}"; do
         if docker image inspect "$image" >/dev/null 2>&1; then
