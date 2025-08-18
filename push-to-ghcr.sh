@@ -351,24 +351,24 @@ print_success "All operations completed successfully!"
 if [[ "$ALL_PLATFORMS" == "true" ]]; then
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushed both containers (multi-platform: linux/amd64,linux/arm64):"
-        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
-        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
+        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
     else
         print_status "Pushed single container (multi-platform: linux/amd64,linux/arm64):"
         local display_tag="${TAG}"
         [[ "$TARGET" == "r-container" ]] && display_tag="r-${TAG}"
-        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
     fi
 else
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushed both containers (host platform only):"
-        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
-        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
+        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
     else
         print_status "Pushed single container (host platform only):"
         local display_tag="${TAG}"
         [[ "$TARGET" == "r-container" ]] && display_tag="r-${TAG}"
-        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
         echo
         print_status "💡 To push both containers, run without -t flag: $0"
         print_status "💡 To push multi-platform images, add -a flag: $0 -a"
