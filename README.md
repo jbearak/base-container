@@ -343,7 +343,7 @@ docker run --rm ghcr.io/jbearak/base-container:latest R -e 'library(pak); pak::p
 docker system df
 
 # Check pak cache (if container exists)
-docker run --rm base-container:pak R -e 'pak::cache_summary()' 2>/dev/null || echo "Container not built yet"
+docker run --rm full-container-arm64 R -e 'pak::cache_summary()' 2>/dev/null || echo "Container not built yet"
 ```
 
 ## License
@@ -374,7 +374,19 @@ The container supports both AMD64 and ARM64 architectures with automatic platfor
     ./build-amd64.sh r-container           # Build R container for AMD64
     ```
 
-**Note for Apple Silicon users**: Building AMD64 images uses emulation and may occasionally fail due to segmentation faults in certain packages during emulation. For reliable AMD64 builds, consider using GitHub Actions or other CI/CD services that run on native AMD64 hardware.
+### Image Naming Convention
+
+The build scripts use different naming conventions for local vs. registry images:
+
+- **Local Images**: Include architecture suffix for clarity
+  - Examples: `full-container-arm64`, `r-container-amd64`, `base-amd64`
+  - Built by: `./build-container.sh`, `./build-amd64.sh`, `./build-all.sh`
+
+- **Registry Images**: Use multi-architecture manifests (no arch suffix)
+  - Examples: `ghcr.io/user/repo:latest` (contains both amd64 and arm64)
+  - Created by: `./push-to-ghcr.sh -a` or `docker buildx build --push`
+
+This approach provides clarity during development while following Docker best practices for distribution.
 
 ### Build Options
 
@@ -390,6 +402,32 @@ All build scripts support additional options:
 # Build with registry cache
 ./build-container.sh --full-container --cache-from-to ghcr.io/user/repo
 ```
+
+### Publishing Images
+
+- **`./push-to-ghcr.sh`** - Pushes images to GitHub Container Registry (GHCR)
+  - **Platform**: Only pushes images built for the **host platform** (default)
+  - **Multi-platform**: Use `-a` flag to build and push both AMD64 and ARM64
+  - **Default**: Pushes both `full-container` and `r-container` if available locally
+  - **Examples**:
+    ```bash
+    ./push-to-ghcr.sh                       # Push both containers (host platform)
+    ./push-to-ghcr.sh -a                    # Build and push both containers (both platforms)
+    ./push-to-ghcr.sh -t full-container     # Push specific container (host platform)
+    ./push-to-ghcr.sh -a -t r-container     # Build and push R container (both platforms)
+    ./push-to-ghcr.sh -b -t r-container     # Build and push R container (host platform)
+    ```
+
+- **Multi-architecture publishing**:
+  ```bash
+  # Option 1: Use the -a flag (recommended)
+  ./push-to-ghcr.sh -a                     # Build and push both platforms
+  ./push-to-ghcr.sh -a -t full-container   # Build and push specific target, both platforms
+  
+  # Option 2: Use docker buildx directly
+  docker buildx build --platform linux/amd64,linux/arm64 \
+    --target full-container --push -t ghcr.io/user/repo:latest .
+  ```
 
 ## Multiple container targets
 
@@ -426,6 +464,20 @@ This repository now supports two top-level container targets optimized for diffe
   ./build-amd64.sh r-container            # R container for AMD64
   ./build-amd64.sh full-container         # Full container for AMD64
   ```
+
+- **Build all combinations (2 architectures × 2 targets = 4 images):**
+  ```bash
+  ./build-all.sh                          # Build all 4 images sequentially
+  ./build-all.sh --parallel               # Build all 4 images in parallel
+  ```
+
+- **Push to GitHub Container Registry:**
+  ```bash
+  ./push-to-ghcr.sh                       # Push both containers (host platform only)
+  ./push-to-ghcr.sh -t full-container     # Push specific container (host platform only)
+  ```
+  
+  **Note**: `push-to-ghcr.sh` only pushes images built for the **host platform**. To push multi-architecture images, use `docker buildx build --push` with `--platform linux/amd64,linux/arm64`.
 
 Add `--test` to run non-interactive verification inside the built image.
 

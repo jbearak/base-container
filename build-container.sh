@@ -19,16 +19,26 @@ CACHE_MODE=""
 REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"  # Auto-detects in GitHub Actions
 
 # Helpers to reduce duplication in docker run checks
+
+# Function to get architecture suffix for consistent naming
+get_host_arch() {
+  case "$(uname -m)" in
+    x86_64) echo "amd64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *) echo "unknown" ;;
+  esac
+}
+
 build_single_target() {
   local target="$1"
-  # For the current targets, container_name and image_tag are the same as target
-  # This creates images like "full-container:full-container" and "r-container:r-container"
-  # instead of using "latest" tag. This prevents tag conflicts when building multiple
-  # targets from the same Dockerfile and makes it clear which variant you're using.
-  local container_name="$target"
-  local image_tag="$target"
+  local host_arch=$(get_host_arch)
   
-  echo "🏗️  Building target: ${target}..."
+  # Create arch-specific image names for consistency
+  # Examples: "full-container-arm64", "r-container-amd64"
+  local container_name="${target}-${host_arch}"
+  local image_tag="${target}-${host_arch}"
+  
+  echo "🏗️  Building target: ${target} for ${host_arch}..."
   
   # Use target-specific cache keys for better cache isolation
   local TARGET_CACHE_MODE=""
@@ -464,21 +474,21 @@ print_container_usage() {
   
   case "$container_name" in
     "r-container")
-      echo "  • Test the R container: docker run -it --rm -v \$(pwd):/workspaces ${container_name}:${image_tag}"
+      echo "  • Test the R container: docker run -it --rm -v \$(pwd):/workspaces ${image_tag}"
       if [ "$is_single_target" = "true" ]; then
-        echo "  • Test R installation: docker run --rm ${container_name}:${image_tag} R --version"
-        echo "  • Test R packages: docker run --rm ${container_name}:${image_tag} R -e 'installed.packages()[1:5,1]'"
+        echo "  • Test R installation: docker run --rm ${image_tag} R --version"
+        echo "  • Test R packages: docker run --rm ${image_tag} R -e 'installed.packages()[1:5,1]'"
         echo "  • Tag and push to GitHub Container Registry:"
-        echo "    docker tag ${container_name}:${image_tag} ghcr.io/${REPO_OWNER}/${container_name}:${image_tag}"
-        echo "    docker push ghcr.io/${REPO_OWNER}/${container_name}:${image_tag}"
+        echo "    docker tag ${image_tag} ghcr.io/${REPO_OWNER}/${container_name}:latest"
+        echo "    docker push ghcr.io/${REPO_OWNER}/${container_name}:latest"
       fi
       ;;
     "full-container")
-      echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project ${container_name}:${image_tag}"
+      echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project ${image_tag}"
       if [ "$is_single_target" = "true" ]; then
         echo "  • Tag and push to GitHub Container Registry:"
-        echo "    docker tag ${container_name}:${image_tag} ghcr.io/${REPO_OWNER}/${container_name}:${image_tag}"
-        echo "    docker push ghcr.io/${REPO_OWNER}/${container_name}:${image_tag}"
+        echo "    docker tag ${image_tag} ghcr.io/${REPO_OWNER}/${container_name}:latest"
+        echo "    docker push ghcr.io/${REPO_OWNER}/${container_name}:latest"
       fi
       ;;
   esac
@@ -563,7 +573,8 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     CONTAINER_NAME="full-container"
     IMAGE_TAG="full-container"
     TEST_FAIL=0
-    full_container_ref="full-container:full-container"
+    host_arch=$(get_host_arch)
+    full_container_ref="full-container-${host_arch}"
     
     echo "🔧 Testing basic system tools..."
     run_in_container "$full_container_ref" "which zsh"
@@ -594,7 +605,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     CONTAINER_NAME="r-container"
     IMAGE_TAG="r-container"
     TEST_FAIL=0
-    r_container_ref="r-container:r-container"
+    r_container_ref="r-container-${host_arch}"
     
     echo "🔧 Testing basic system tools..."
     run_in_container "$r_container_ref" "which zsh"
@@ -621,7 +632,8 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     # Single target testing (existing logic)
     echo "🧪 Testing container..."
     TEST_FAIL=0
-    container_ref="${CONTAINER_NAME}:${IMAGE_TAG}"
+    host_arch=$(get_host_arch)
+    container_ref="${CONTAINER_NAME}-${host_arch}"
 
     echo "🔧 Testing basic system tools..."
     run_in_container "$container_ref" "which zsh"
@@ -710,74 +722,90 @@ fi
 echo "🎉 Done! You can now:"
 
 if [ "$BUILD_MULTIPLE" = "true" ]; then
-  print_container_usage "full-container" "full-container"
-  print_container_usage "r-container" "r-container"
+  host_arch=$(get_host_arch)
+  print_container_usage "full-container" "full-container-${host_arch}"
+  print_container_usage "r-container" "r-container-${host_arch}"
   echo "  • Tag and push both containers to GitHub Container Registry:"
   echo "    ./push-to-ghcr.sh  # Pushes both by default (consistent with build behavior)"
   echo "  • Reference in other projects' devcontainer.json files"
 else
+  # Set container name and image tag based on target
+  case "$BUILD_TARGET" in
+    "r-container")
+      CONTAINER_NAME="r-container"
+      IMAGE_TAG="r-container"
+      ;;
+    "full-container")
+      CONTAINER_NAME="full-container"
+      IMAGE_TAG="full-container"
+      ;;
+  esac
+  
+  host_arch=$(get_host_arch)
+  arch_specific_image="${CONTAINER_NAME}-${host_arch}"
+  
   case "$BUILD_TARGET" in
 "base")
-  echo "  • Test the base stage with: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
+  echo "  • Test the base stage with: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
   echo "  • Build with nvim plugins next with: ./build-container.sh --base-nvim"
   ;;
 "base-nvim")
-  echo "  • Test the base-nvim stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test nvim with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} nvim --version"
+  echo "  • Test the base-nvim stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test nvim with: docker run --rm ${arch_specific_image} nvim --version"
   echo "  • Build with LaTeX next with: ./build-container.sh --base-nvim-tex"
   ;;
 "base-nvim-tex")
-  echo "  • Test the base-nvim-tex stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test LaTeX with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} xelatex --version | head -n 1"
+  echo "  • Test the base-nvim-tex stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test LaTeX with: docker run --rm ${arch_specific_image} xelatex --version | head -n 1"
   echo "  • Build with Pandoc next with: ./build-container.sh --base-nvim-tex-pandoc"
   ;;
 "base-nvim-tex-pandoc")
-  echo "  • Test the base-nvim-tex-pandoc stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test Pandoc with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} pandoc --version | head -n 1"
+  echo "  • Test the base-nvim-tex-pandoc stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test Pandoc with: docker run --rm ${arch_specific_image} pandoc --version | head -n 1"
   echo "  • Build with extra LaTeX packages next with: ./build-container.sh --base-nvim-tex-pandoc-haskell-crossref-plus"
   ;;
 "base-nvim-tex-pandoc-haskell")
-  echo "  • Test the base-nvim-tex-pandoc-haskell stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test Stack with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} stack --version"
+  echo "  • Test the base-nvim-tex-pandoc-haskell stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test Stack with: docker run --rm ${arch_specific_image} stack --version"
   echo "  • Build with pandoc-crossref next with: ./build-container.sh --base-nvim-tex-pandoc-haskell-crossref"
   ;;
 "base-nvim-tex-pandoc-haskell-crossref")
-  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test pandoc-crossref with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} pandoc-crossref --version"
+  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test pandoc-crossref with: docker run --rm ${arch_specific_image} pandoc-crossref --version"
   echo "  • Build with extra LaTeX packages next with: ./build-container.sh --base-nvim-tex-pandoc-haskell-crossref-plus"
   ;;
 "base-nvim-tex-pandoc-haskell-crossref-plus")
-  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test soul package with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} kpsewhich soul.sty"
+  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test soul package with: docker run --rm ${arch_specific_image} kpsewhich soul.sty"
   echo "  • Build with Python 3.13 next with: ./build-container.sh --base-nvim-tex-pandoc-haskell-crossref-plus-py"
   ;;
 "base-nvim-tex-pandoc-haskell-crossref-plus-py")
-  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus-py stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test Python 3.13 with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} python3.13 --version"
+  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus-py stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test Python 3.13 with: docker run --rm ${arch_specific_image} python3.13 --version"
   echo "  • Build with R installation next with: ./build-container.sh --base-nvim-tex-pandoc-haskell-crossref-plus-py-r"
   ;;
 "base-nvim-tex-pandoc-haskell-crossref-plus-py-r")
-  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus-py-r stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test R installation with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} R --version"
-  echo "  • Test CmdStan with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} ls -la /opt/cmdstan/bin/"
-  echo "  • Test JAGS with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} which jags"
+  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus-py-r stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test R installation with: docker run --rm ${arch_specific_image} R --version"
+  echo "  • Test CmdStan with: docker run --rm ${arch_specific_image} ls -la /opt/cmdstan/bin/"
+  echo "  • Test JAGS with: docker run --rm ${arch_specific_image} which jags"
   echo "  • Build with R packages next with: ./build-container.sh --base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak"
   ;;
 "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak")
-  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test R packages with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} R -e 'cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")'"
+  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test R packages with: docker run --rm ${arch_specific_image} R -e 'cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")'"
   echo "  • Build with VS Code next with: ./build-container.sh --base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode"
   ;;
 "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode")
-  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode stage: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test VS Code with: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} ls -la /home/me/.vscode-server/bin/"
+  echo "  • Test the base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode stage: docker run -it --rm -v \$(pwd):/workspaces/project ${arch_specific_image}"
+  echo "  • Test VS Code with: docker run --rm ${arch_specific_image} ls -la /home/me/.vscode-server/bin/"
   echo "  • Build full environment next with: ./build-container.sh --full"
   ;;
 "r-container")
-  print_container_usage "r-container" "${IMAGE_TAG}" "true"
+  print_container_usage "r-container" "${arch_specific_image}" "true"
   ;;
   "full-container")
-    print_container_usage "full-container" "${IMAGE_TAG}" "true"
+    print_container_usage "full-container" "${arch_specific_image}" "true"
     ;;
   esac
   echo "  • Reference in other projects' devcontainer.json files"

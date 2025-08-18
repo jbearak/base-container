@@ -48,19 +48,23 @@ OPTIONS:
     -g, --tag TAG          Tag for the image (default: $DEFAULT_TAG)
     -b, --build            Build the image before pushing
     -f, --force            Force push even if image doesn't exist locally
+    -a, --all-platforms    Build and push multi-platform images (linux/amd64,linux/arm64)
     -h, --help             Show this help message
 
 EXAMPLES:
-    $0                                         # Push all targets with latest tag
-    $0 -t full-container                       # Push only full-container:latest
-    $0 -t r-container -g v1.0.0              # Push only r-container:v1.0.0
-    $0 -b                                     # Build and push all targets
-    $0 --build --target full-container --tag dev   # Build and push only full-container:dev
+    $0                                         # Push all targets (host platform only)
+    $0 -a                                      # Build and push all targets (both platforms)
+    $0 -t full-container                       # Push only full-container (host platform)
+    $0 -a -t full-container                    # Build and push full-container (both platforms)
+    $0 -t r-container -g v1.0.0              # Push only r-container:v1.0.0 (host platform)
+    $0 -b                                     # Build and push all targets (host platform)
+    $0 -a -b                                  # Build and push all targets (both platforms)
 
 PREREQUISITES:
     1. Docker must be installed and running
     2. You must be logged in to GHCR: docker login ghcr.io
     3. You must have push permissions to the repository
+    4. For multi-platform builds: docker buildx with multi-platform support
 
 EOF
 }
@@ -79,19 +83,30 @@ check_ghcr_login() {
     exit 1
 }
 
+# Function to get host architecture for consistent naming
+get_host_arch() {
+    case "$(uname -m)" in
+        x86_64) echo "amd64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
 # Function to check if local image exists
 check_local_image() {
     local target="$1"
     local tag="$2"
+    local host_arch=$(get_host_arch)
 
-    # Try standard naming pattern (e.g., "base-container:latest")
-    if docker image inspect "${LOCAL_IMAGE_NAME}:${tag}" >/dev/null 2>&1; then
+    # Try new arch-specific naming pattern (e.g., "full-container-arm64")
+    local arch_specific_name="${target}-${host_arch}"
+    if docker image inspect "${arch_specific_name}" >/dev/null 2>&1; then
         return 0
     fi
 
-    # Try target-specific naming patterns (e.g., "full-container:full-container")
-    local image_names=("${LOCAL_IMAGE_NAME}:${target}" "${target}:${tag}" "${target}:${target}")
-    for image in "${image_names[@]}"; do
+    # Try legacy naming patterns for backward compatibility
+    local legacy_names=("${LOCAL_IMAGE_NAME}:${tag}" "${LOCAL_IMAGE_NAME}:${target}" "${target}:${tag}" "${target}:${target}")
+    for image in "${legacy_names[@]}"; do
         if docker image inspect "$image" >/dev/null 2>&1; then
             return 0
         fi
@@ -134,8 +149,8 @@ push_image() {
     local target="$1"
     local tag="$2"
     local force="$3"
+    local host_arch=$(get_host_arch)
     
-    local local_tag="$tag"
     local remote_image="${REGISTRY}/${REPOSITORY}:${tag}"
     
     # For r-container, use a different repository
@@ -145,13 +160,17 @@ push_image() {
     
     # Check if local image exists
     if ! check_local_image "$target" "$tag" && [[ "$force" != "true" ]]; then
-        print_error "Local image ${LOCAL_IMAGE_NAME}:${tag} not found. Use -b to build or -f to force."
+        print_error "Local image not found. Use -b to build or -f to force."
         return 1
     fi
     
-    # Determine which local image to use
+    # Determine which local image to use (prioritize new arch-specific naming)
     local source_image
-    if docker image inspect "${LOCAL_IMAGE_NAME}:${tag}" >/dev/null 2>&1; then
+    local arch_specific_name="${target}-${host_arch}"
+    
+    if docker image inspect "${arch_specific_name}" >/dev/null 2>&1; then
+        source_image="${arch_specific_name}"
+    elif docker image inspect "${LOCAL_IMAGE_NAME}:${tag}" >/dev/null 2>&1; then
         source_image="${LOCAL_IMAGE_NAME}:${tag}"
     elif docker image inspect "${LOCAL_IMAGE_NAME}:${target}" >/dev/null 2>&1; then
         source_image="${LOCAL_IMAGE_NAME}:${target}"
@@ -173,12 +192,46 @@ push_image() {
     print_success "Successfully pushed: $remote_image"
 }
 
+# Function to build and push multi-platform image
+build_and_push_multiplatform() {
+    local target="$1"
+    local tag="$2"
+    
+    local remote_image="${REGISTRY}/${REPOSITORY}:${tag}"
+    
+    # For r-container, use a different repository
+    if [[ "$target" == "r-container" ]]; then
+        remote_image="${REGISTRY}/${REPO_OWNER}/r-container:${tag}"
+    fi
+    
+    print_status "Building and pushing multi-platform image for target: $target"
+    print_status "Platforms: linux/amd64,linux/arm64"
+    print_status "Destination: $remote_image"
+    
+    # Build and push multi-platform image directly to registry
+    if docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --target "$target" \
+        --build-arg DEBIAN_FRONTEND=noninteractive \
+        --build-arg DEBCONF_NONINTERACTIVE_SEEN=true \
+        --push \
+        -t "$remote_image" \
+        . ; then
+        print_success "✅ Multi-platform image pushed successfully: $remote_image"
+        return 0
+    else
+        print_error "❌ Failed to build and push multi-platform image: $remote_image"
+        return 1
+    fi
+}
+
 # Parse command line arguments
 TARGET=""  # Empty means push all targets (consistent with build script)
 TAG="$DEFAULT_TAG"
 BUILD_FIRST=false
 PUSH_ALL=true  # Default to pushing all targets
 FORCE=false
+ALL_PLATFORMS=false  # New option for multi-platform builds
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -197,6 +250,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         -f|--force)
             FORCE=true
+            shift
+            ;;
+        -a|--all-platforms)
+            ALL_PLATFORMS=true
+            print_status "Multi-platform mode enabled (linux/amd64,linux/arm64)"
             shift
             ;;
         -h|--help)
@@ -230,41 +288,99 @@ print_status "Repository: $REPOSITORY"
 # Check prerequisites
 check_ghcr_login
 
-if [[ "$PUSH_ALL" == "true" ]]; then
-    print_status "Pushing all targets..."
-    for target in "${VALID_TARGETS[@]}"; do
-        echo
-        print_status "Processing target: $target"
-        
-        if [[ "$BUILD_FIRST" == "true" ]]; then
-            build_image "$target" "$target"
-        fi
-        
-        push_image "$target" "$TAG" "$FORCE"
-    done
-else
-    print_status "Processing single target: $TARGET"
+# Multi-platform builds require buildx and don't use local images
+if [[ "$ALL_PLATFORMS" == "true" ]]; then
+    print_status "Multi-platform mode: Building and pushing directly to registry..."
     
-    if [[ "$BUILD_FIRST" == "true" ]]; then
-        build_image "$TARGET" "$TAG"
+    # Check if buildx is available
+    if ! docker buildx version >/dev/null 2>&1; then
+        print_error "docker buildx is required for multi-platform builds"
+        exit 1
     fi
     
-    push_image "$TARGET" "$TAG" "$FORCE"
+    if [[ "$PUSH_ALL" == "true" ]]; then
+        print_status "Building and pushing all targets (multi-platform)..."
+        failed_builds=0
+        
+        for target in "${VALID_TARGETS[@]}"; do
+            echo
+            print_status "Processing target: $target (multi-platform)"
+            
+            if ! build_and_push_multiplatform "$target" "$TAG"; then
+                ((failed_builds++))
+                print_error "Failed to build and push $target, continuing..."
+            fi
+        done
+        
+        if [ $failed_builds -eq 0 ]; then
+            print_success "All multi-platform builds completed successfully!"
+        else
+            print_error "$failed_builds multi-platform build(s) failed"
+            exit 1
+        fi
+    else
+        print_status "Building and pushing single target: $TARGET (multi-platform)"
+        
+        if ! build_and_push_multiplatform "$TARGET" "$TAG"; then
+            print_error "Failed to build and push $TARGET"
+            exit 1
+        fi
+    fi
+else
+    # Original single-platform logic
+    if [[ "$PUSH_ALL" == "true" ]]; then
+        print_status "Pushing all targets (host platform)..."
+        for target in "${VALID_TARGETS[@]}"; do
+            echo
+            print_status "Processing target: $target"
+            
+            if [[ "$BUILD_FIRST" == "true" ]]; then
+                build_image "$target" "$target"
+            fi
+            
+            push_image "$target" "$TAG" "$FORCE"
+        done
+    else
+        print_status "Processing single target: $TARGET (host platform)"
+        
+        if [[ "$BUILD_FIRST" == "true" ]]; then
+            build_image "$TARGET" "$TAG"
+        fi
+        
+        push_image "$TARGET" "$TAG" "$FORCE"
+    fi
 fi
 
 print_success "All operations completed successfully!"
 
-if [[ "$PUSH_ALL" == "true" ]]; then
-    print_status "Pushed both containers:"
-    print_status "  - full-container:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
-    print_status "  - r-container:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
-else
-    print_status "Pushed single container:"
-    if [[ "$TARGET" == "r-container" ]]; then
-        print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+# Success message
+if [[ "$ALL_PLATFORMS" == "true" ]]; then
+    if [[ "$PUSH_ALL" == "true" ]]; then
+        print_status "Pushed both containers (multi-platform: linux/amd64,linux/arm64):"
+        print_status "  - full-container:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+        print_status "  - r-container:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
     else
-        print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+        print_status "Pushed single container (multi-platform: linux/amd64,linux/arm64):"
+        if [[ "$TARGET" == "r-container" ]]; then
+            print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+        else
+            print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+        fi
     fi
-    echo
-    print_status "💡 To push both containers, run without -t flag: $0"
+else
+    if [[ "$PUSH_ALL" == "true" ]]; then
+        print_status "Pushed both containers (host platform only):"
+        print_status "  - full-container:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+        print_status "  - r-container:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+    else
+        print_status "Pushed single container (host platform only):"
+        if [[ "$TARGET" == "r-container" ]]; then
+            print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+        else
+            print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+        fi
+        echo
+        print_status "💡 To push both containers, run without -t flag: $0"
+        print_status "💡 To push multi-platform images, add -a flag: $0 -a"
+    fi
 fi
