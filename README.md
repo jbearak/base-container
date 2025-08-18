@@ -265,13 +265,15 @@ If you use VS Code to create the container, add the following to your `.devconta
 
 ### Architecture
 
-The container uses a multi-stage build process optimized for Docker layer caching:
+The container uses a multi-stage build process optimized for Docker layer caching and supports both AMD64 and ARM64 architectures:
 
 - **Base Stage**: Ubuntu 24.04 with essential system packages
 - **Development Tools**: Neovim with plugins, Git, shell utilities  
 - **Document Preparation**: LaTeX, Pandoc, Haskell (for pandoc-crossref)
 - **Programming Languages**: Python 3.13, R 4.5+ with comprehensive packages
 - **VS Code Integration**: VS Code Server with extensions (positioned last for optimal caching)
+
+**Platform Detection**: The Dockerfile automatically detects the target architecture using `dpkg --print-architecture` and installs architecture-specific binaries for tools like Go, Neovim, Hadolint, and others.
 
 **Optimization Strategy**: Expensive, stable components (LaTeX, Haskell) are built early, while frequently updated components (VS Code extensions) are positioned late to minimize rebuild times when making changes.
 
@@ -285,8 +287,11 @@ The container uses [pak](https://pak.r-lib.org/) for R package management, provi
 
 #### Cache Usage Examples
 ```bash
-# Build with local cache only (default)
+# Build with local cache only (default) - host platform
 ./build-container.sh --full
+
+# Build for AMD64 platform (cross-platform on Apple Silicon)
+./build-amd64.sh full-container
 
 # Build using registry cache
 ./build-container.sh --full --cache-from ghcr.io/jbearak/base-container
@@ -346,6 +351,46 @@ docker run --rm base-container:pak R -e 'pak::cache_summary()' 2>/dev/null || ec
 Licensed under the [MIT License](LICENSE.txt).
 
 
+## Building the Container
+
+### Platform Support
+
+The container supports both AMD64 and ARM64 architectures with automatic platform detection:
+
+- **`./build-container.sh`** - Builds for the **host platform** (ARM64 on Apple Silicon, AMD64 on Intel/AMD systems)
+  - Default: Builds both `full-container` and `r-container` for host architecture
+  - Examples:
+    ```bash
+    ./build-container.sh                    # Build both containers for host platform
+    ./build-container.sh --full-container   # Build full container for host platform
+    ./build-container.sh --r-container      # Build R container for host platform
+    ```
+
+- **`./build-amd64.sh`** - Explicitly builds for **AMD64 platform** (useful on Apple Silicon for cross-platform builds)
+  - Examples:
+    ```bash
+    ./build-amd64.sh base                   # Build base stage for AMD64
+    ./build-amd64.sh full-container         # Build full container for AMD64
+    ./build-amd64.sh r-container           # Build R container for AMD64
+    ```
+
+**Note for Apple Silicon users**: Building AMD64 images uses emulation and may occasionally fail due to segmentation faults in certain packages during emulation. For reliable AMD64 builds, consider using GitHub Actions or other CI/CD services that run on native AMD64 hardware.
+
+### Build Options
+
+All build scripts support additional options:
+
+```bash
+# Build with testing
+./build-container.sh --full-container --test
+
+# Build without cache
+./build-container.sh --full-container --no-cache
+
+# Build with registry cache
+./build-container.sh --full-container --cache-from-to ghcr.io/user/repo
+```
+
 ## Multiple container targets
 
 This repository now supports two top-level container targets optimized for different use cases.
@@ -365,15 +410,24 @@ This repository now supports two top-level container targets optimized for diffe
 
 ### Build commands
 
-- Build the lightweight R image (CI optimized):
+- **Build both containers for host platform (default):**
+  ```bash
+  ./build-container.sh
+  ```
 
-  ./build-container.sh --r-container
+- **Build specific container for host platform:**
+  ```bash
+  ./build-container.sh --r-container      # Lightweight R image (CI optimized)
+  ./build-container.sh --full-container   # Complete dev environment
+  ```
 
-- Build the complete dev environment:
+- **Build for AMD64 platform (cross-platform):**
+  ```bash
+  ./build-amd64.sh r-container            # R container for AMD64
+  ./build-amd64.sh full-container         # Full container for AMD64
+  ```
 
-  ./build-container.sh --full-container
-
-Add --test to run non-interactive verification inside the built image.
+Add `--test` to run non-interactive verification inside the built image.
 
 ### Using in VS Code Dev Containers (full-container)
 
