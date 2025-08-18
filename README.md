@@ -477,7 +477,7 @@ This repository now supports two top-level container targets optimized for diffe
   ./push-to-ghcr.sh -t full-container     # Push specific container (host platform only)
   ```
   
-  **Note**: By default, `push-to-ghcr.sh` pushes images built for the **host platform**. Use the `-a` flag to build and push multi-architecture images directly to the registry.
+  **Note**: By default, `push-to-ghcr.sh` pushes existing local images (host platform only). The `-a` flag builds and pushes multi-architecture images in one step (cannot be separated due to Docker buildx limitations).
 
 Add `--test` to run non-interactive verification inside the built image.
 
