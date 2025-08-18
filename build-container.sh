@@ -427,6 +427,34 @@ else
   echo "🏗️  Building dev container image (target: ${BUILD_TARGET})..."
 fi
 
+# Helper function to print container usage examples
+print_container_usage() {
+  local container_name="$1"
+  local image_tag="$2"
+  local is_single_target="${3:-false}"
+  
+  case "$container_name" in
+    "r-container")
+      echo "  • Test the R container: docker run -it --rm -v \$(pwd):/workspace ${container_name}:${image_tag}"
+      if [ "$is_single_target" = "true" ]; then
+        echo "  • Test R installation: docker run --rm ${container_name}:${image_tag} R --version"
+        echo "  • Test R packages: docker run --rm ${container_name}:${image_tag} R -e 'installed.packages()[1:5,1]'"
+        echo "  • Tag and push to GitHub Container Registry:"
+        echo "    docker tag ${container_name}:${image_tag} ghcr.io/jbearak/${container_name}:${image_tag}"
+        echo "    docker push ghcr.io/jbearak/${container_name}:${image_tag}"
+      fi
+      ;;
+    "full-container")
+      echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project ${container_name}:${image_tag}"
+      if [ "$is_single_target" = "true" ]; then
+        echo "  • Tag and push to GitHub Container Registry:"
+        echo "    docker tag ${container_name}:${image_tag} ghcr.io/jbearak/${container_name}:${image_tag}"
+        echo "    docker push ghcr.io/jbearak/${container_name}:${image_tag}"
+      fi
+      ;;
+  esac
+}
+
 # Helper to render bytes to human size without requiring numfmt
 human_size() {
   local my_bytes="$1"
@@ -629,8 +657,8 @@ fi
 echo "🎉 Done! You can now:"
 
 if [ "$BUILD_MULTIPLE" = "true" ]; then
-  echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project full-container:full-container"
-  echo "  • Test the R container: docker run -it --rm -v \$(pwd):/workspace r-container:r-container"
+  print_container_usage "full-container" "full-container"
+  print_container_usage "r-container" "r-container"
   echo "  • Tag and push both containers to GitHub Container Registry:"
   echo "    ./push-to-ghcr.sh -a"
   echo "  • Reference in other projects' devcontainer.json files"
@@ -693,18 +721,10 @@ else
   echo "  • Build full environment next with: ./build-container.sh --full"
   ;;
 "r-container")
-  echo "  • Test the R container: docker run -it --rm -v \$(pwd):/workspace ${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "  • Test R installation: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} R --version"
-  echo "  • Test R packages: docker run --rm ${CONTAINER_NAME}:${IMAGE_TAG} R -e 'installed.packages()[1:5,1]'"
-  echo "  • Tag and push to GitHub Container Registry:"
-  echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
-  echo "    docker push ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
+  print_container_usage "r-container" "${IMAGE_TAG}" "true"
   ;;
   "full-container")
-    echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project ${CONTAINER_NAME}:${IMAGE_TAG}"
-    echo "  • Tag and push to GitHub Container Registry:"
-    echo "    docker tag ${CONTAINER_NAME}:${IMAGE_TAG} ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
-    echo "    docker push ghcr.io/jbearak/${CONTAINER_NAME}:${IMAGE_TAG}"
+    print_container_usage "full-container" "${IMAGE_TAG}" "true"
     ;;
   esac
   echo "  • Reference in other projects' devcontainer.json files"
