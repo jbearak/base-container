@@ -1573,7 +1573,7 @@ RUN echo "" >> /home/me/.bashrc && \
     rm /tmp/r-shell-config
 
 # Set CI-optimized working directory and env vars
-WORKDIR /workspace
+WORKDIR /workspaces
 ENV CI=true
 
 # Switch to the 'me' user for the final container

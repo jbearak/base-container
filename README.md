@@ -354,7 +354,7 @@ This repository now supports two top-level container targets optimized for diffe
   - Base: Ubuntu + essential build tools only
   - Includes: R 4.x, pak, JAGS, and packages from R_packages.txt (Stan packages excluded)
   - Skips: Neovim, LaTeX toolchain, Pandoc, Haskell, Python, VS Code server, CmdStan
-  - Working directory: /workspace, ENV CI=true
+  - Working directory: /workspaces, ENV CI=true
   - Best for: GitHub Actions / Bitbucket Pipelines / other CI runners
 
 - full-container: the complete local development environment
