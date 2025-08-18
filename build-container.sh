@@ -134,11 +134,12 @@ test_pandoc() {
     return 1
   }
   echo "📝 Running comprehensive Pandoc tests (docx, pdf, citations)..."
-  if ! docker run --rm -v "$(pwd)":/workspace -w /workspace "${CONTAINER_NAME}:${IMAGE_TAG}" ./test_pandoc.sh; then
+  if docker run --rm -v "$(pwd)":/workspace -w /workspace "${CONTAINER_NAME}:${IMAGE_TAG}" ./test_pandoc.sh; then
+    return 0
+  else
     echo "⚠️  Comprehensive Pandoc tests failed"
     return 1
   fi
-  return 0
 }
 
 test_pandoc_plus() {

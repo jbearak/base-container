@@ -82,22 +82,21 @@ check_ghcr_login() {
 check_local_image() {
     local target="$1"
     local tag="$2"
-    
+
+    # Try standard naming pattern first
     if docker image inspect "${LOCAL_IMAGE_NAME}:${tag}" >/dev/null 2>&1; then
         return 0
-    elif docker image inspect "${LOCAL_IMAGE_NAME}:${target}" >/dev/null 2>&1; then
-        return 0
-    elif docker image inspect "r-container:${tag}" >/dev/null 2>&1 && [[ "$target" == "r-container" ]]; then
-        return 0
-    elif docker image inspect "r-container:${target}" >/dev/null 2>&1 && [[ "$target" == "r-container" ]]; then
-        return 0
-    elif docker image inspect "full-container:${tag}" >/dev/null 2>&1 && [[ "$target" == "full-container" ]]; then
-        return 0
-    elif docker image inspect "full-container:${target}" >/dev/null 2>&1 && [[ "$target" == "full-container" ]]; then
-        return 0
-    else
-        return 1
     fi
+
+    # Try target-specific naming patterns
+    local image_names=("${LOCAL_IMAGE_NAME}:${target}" "${target}:${tag}" "${target}:${target}")
+    for image in "${image_names[@]}"; do
+        if docker image inspect "$image" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 # Function to build image
@@ -155,14 +154,10 @@ push_image() {
         source_image="${LOCAL_IMAGE_NAME}:${tag}"
     elif docker image inspect "${LOCAL_IMAGE_NAME}:${target}" >/dev/null 2>&1; then
         source_image="${LOCAL_IMAGE_NAME}:${target}"
-    elif docker image inspect "r-container:${tag}" >/dev/null 2>&1 && [[ "$target" == "r-container" ]]; then
-        source_image="r-container:${tag}"
-    elif docker image inspect "r-container:${target}" >/dev/null 2>&1 && [[ "$target" == "r-container" ]]; then
-        source_image="r-container:${target}"
-    elif docker image inspect "full-container:${tag}" >/dev/null 2>&1 && [[ "$target" == "full-container" ]]; then
-        source_image="full-container:${tag}"
-    elif docker image inspect "full-container:${target}" >/dev/null 2>&1 && [[ "$target" == "full-container" ]]; then
-        source_image="full-container:${target}"
+    elif docker image inspect "${target}:${tag}" >/dev/null 2>&1; then
+        source_image="${target}:${tag}"
+    elif docker image inspect "${target}:${target}" >/dev/null 2>&1; then
+        source_image="${target}:${target}"
     else
         print_error "No suitable local image found"
         return 1
