@@ -23,7 +23,7 @@ build_single_target() {
   echo "🏗️  Building target: ${target}..."
   
   # Use target-specific cache keys for better cache isolation
-  TARGET_CACHE_MODE=""
+  local TARGET_CACHE_MODE=""
   if [ -n "$CACHE_REGISTRY" ]; then
     if [[ "$CACHE_MODE" == *"--cache-from"* ]]; then
       TARGET_CACHE_MODE="--cache-from type=registry,ref=${CACHE_REGISTRY}/cache:${target}"
@@ -103,15 +103,17 @@ print_size_info() {
   fi
 }
 run_in_container() {
-  local my_cmd="$1"
-  docker run --rm "${CONTAINER_NAME}:${IMAGE_TAG}" bash -lc "$my_cmd"
+  local container_ref="$1"
+  local my_cmd="$2"
+  docker run --rm "${container_ref}" bash -lc "$my_cmd"
 }
 
 check_cmd() {
   local my_description="$1"
-  local my_cmd="$2"
+  local container_ref="$2"
+  local my_cmd="$3"
   echo "$my_description"
-  if run_in_container "$my_cmd" >/dev/null 2>&1; then
+  if run_in_container "$container_ref" "$my_cmd" >/dev/null 2>&1; then
     return 0
   else
     echo "⚠️  ${my_description} failed"
@@ -120,8 +122,9 @@ check_cmd() {
 }
 
 test_vscode() {
+  local container_ref="${1:-${CONTAINER_NAME}:${IMAGE_TAG}}"
   echo "📦 Testing VS Code server installation..."
-  if ! run_in_container "ls -la /home/me/.vscode-server/bin/"; then
+  if ! run_in_container "$container_ref" "ls -la /home/me/.vscode-server/bin/"; then
     echo "⚠️  VS Code server test failed"
     return 1
   fi
@@ -129,8 +132,9 @@ test_vscode() {
 }
 
 test_latex_basic() {
+  local container_ref="${1:-${CONTAINER_NAME}:${IMAGE_TAG}}"
   echo "📄 Testing LaTeX installation..."
-  if ! run_in_container "xelatex --version | head -n 1"; then
+  if ! run_in_container "$container_ref" "xelatex --version | head -n 1"; then
     echo "⚠️  XeLaTeX test failed"
     return 1
   fi
@@ -138,13 +142,14 @@ test_latex_basic() {
 }
 
 test_pandoc() {
+  local container_ref="${1:-${CONTAINER_NAME}:${IMAGE_TAG}}"
   echo "📄 Testing Pandoc installation and functionality..."
-  run_in_container "pandoc --version | head -n 1" || {
+  run_in_container "$container_ref" "pandoc --version | head -n 1" || {
     echo "⚠️  Pandoc version test failed"
     return 1
   }
   echo "📝 Running comprehensive Pandoc tests (docx, pdf, citations)..."
-  if docker run --rm -v "$(pwd)":/workspace -w /workspace "${CONTAINER_NAME}:${IMAGE_TAG}" ./test_pandoc.sh; then
+  if docker run --rm -v "$(pwd)":/workspace -w /workspace "$container_ref" ./test_pandoc.sh; then
     return 0
   else
     echo "⚠️  Comprehensive Pandoc tests failed"
@@ -153,70 +158,75 @@ test_pandoc() {
 }
 
 test_pandoc_plus() {
+  local container_ref="${1:-${CONTAINER_NAME}:${IMAGE_TAG}}"
   echo "🔍 Testing tlmgr soul package..."
-  run_in_container "kpsewhich soul.sty" || {
+  run_in_container "$container_ref" "kpsewhich soul.sty" || {
     echo "⚠️ soul.sty missing"
     return 1
   }
 }
 
 test_python313() {
+  local container_ref="${1:-${CONTAINER_NAME}:${IMAGE_TAG}}"
   echo "🐍 Testing Python 3.13 installation..."
-  run_in_container "python3.13 --version" || {
+  run_in_container "$container_ref" "python3.13 --version" || {
     echo "⚠️ Python 3.13 not available"
     return 1
   }
-  run_in_container "python3.13 -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}\")'" || {
+  run_in_container "$container_ref" "python3.13 -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}\")'" || {
     echo "⚠️ Python 3.13 execution test failed"
     return 1
   }
 }
 
 test_nvim_and_plugins() {
+  local container_ref="${1:-${CONTAINER_NAME}:${IMAGE_TAG}}"
   echo "📝 Testing nvim and plugins..."
-  run_in_container "nvim --version" || {
+  run_in_container "$container_ref" "nvim --version" || {
     echo "⚠️  nvim not available"
     return 1
   }
-  run_in_container "ls -la /home/me/.local/share/nvim/lazy/" || {
+  run_in_container "$container_ref" "ls -la /home/me/.local/share/nvim/lazy/" || {
     echo "⚠️  lazy.nvim plugins not found"
     return 1
   }
 }
 
 test_dev_tools() {
+  local container_ref="${1:-${CONTAINER_NAME}:${IMAGE_TAG}}"
   echo "🛠️  Testing development tools..."
   local my_fail=0
-  check_cmd "Checking Yarn..." "yarn --version" || my_fail=1
-  check_cmd "Checking fd..." 'env PATH="/home/me/.local/bin:$PATH" fd --version' || my_fail=1
-  check_cmd "Checking eza..." "eza --version" || my_fail=1
+  check_cmd "Checking Yarn..." "$container_ref" "yarn --version" || my_fail=1
+  check_cmd "Checking fd..." "$container_ref" 'env PATH="/home/me/.local/bin:$PATH" fd --version' || my_fail=1
+  check_cmd "Checking eza..." "$container_ref" "eza --version" || my_fail=1
   # gotests does not support --version; -h confirms presence
-  check_cmd "Checking gotests..." 'env GOPATH="/home/me/go" PATH="/home/me/go/bin:/usr/local/go/bin:$PATH" gotests -h >/dev/null' || my_fail=1
-  check_cmd "Checking tree-sitter..." 'env PATH="/home/me/.local/bin:$PATH" tree-sitter --version' || my_fail=1
+  check_cmd "Checking gotests..." "$container_ref" 'env GOPATH="/home/me/go" PATH="/home/me/go/bin:/usr/local/go/bin:$PATH" gotests -h >/dev/null' || my_fail=1
+  check_cmd "Checking tree-sitter..." "$container_ref" 'env PATH="/home/me/.local/bin:$PATH" tree-sitter --version' || my_fail=1
   return $my_fail
 }
 
 test_r_container_optimized() {
+  local container_ref="${1:-${CONTAINER_NAME}:${IMAGE_TAG}}"
   echo "🔬 Testing r-container optimizations..."
   local my_fail=0
   
   # Test that build tools are removed
   echo "  Verifying build tools removal..."
-  if run_in_container "command -v gcc >/dev/null 2>&1"; then
+  if run_in_container "$container_ref" "command -v gcc >/dev/null 2>&1"; then
     echo "    ❌ gcc still present"
     my_fail=1
   else
     echo "    ✅ gcc removed"
   fi
   
-  if run_in_container "command -v make >/dev/null 2>&1"; then
+  if run_in_container "$container_ref" "command -v make >/dev/null 2>&1"; then
     echo "    ❌ make still present"
     my_fail=1
   else
     echo "    ✅ make removed"
   fi
   
-  if run_in_container "dpkg -l | grep -q r-base-dev"; then
+  if run_in_container "$container_ref" "dpkg -l | grep -q r-base-dev"; then
     echo "    ❌ r-base-dev still present"
     my_fail=1
   else
@@ -225,7 +235,7 @@ test_r_container_optimized() {
   
   # Test that git-lfs is present
   echo "  Verifying git-lfs availability..."
-  if run_in_container "git lfs version >/dev/null 2>&1"; then
+  if run_in_container "$container_ref" "git lfs version >/dev/null 2>&1"; then
     echo "    ✅ git-lfs available"
   else
     echo "    ❌ git-lfs missing"
@@ -234,7 +244,7 @@ test_r_container_optimized() {
   
   # Test that essential R packages work (including geospatial)
   echo "  Testing essential R packages (including geospatial)..."
-  if run_in_container 'R -e "library(dplyr); library(ggplot2); library(sf); cat(\"✅ Essential packages including geospatial loaded\\n\")"' >/dev/null 2>&1; then
+  if run_in_container "$container_ref" 'R -e "library(dplyr); library(ggplot2); library(sf); cat(\"✅ Essential packages including geospatial loaded\\n\")"' >/dev/null 2>&1; then
     echo "    ✅ Essential R packages including geospatial working"
   else
     echo "    ❌ Essential R packages failed"
@@ -243,7 +253,7 @@ test_r_container_optimized() {
   
   # Test that only Stan packages are excluded
   echo "  Verifying only Stan packages exclusion..."
-  if run_in_container 'R -e "quit(status=if(require(rstan, quietly=TRUE)) 1 else 0)"' >/dev/null 2>&1; then
+  if run_in_container "$container_ref" 'R -e "quit(status=if(require(rstan, quietly=TRUE)) 1 else 0)"' >/dev/null 2>&1; then
     echo "    ✅ Stan packages excluded (as expected)"
   else
     echo "    ❌ Stan packages still present"
@@ -550,21 +560,22 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     CONTAINER_NAME="full-container"
     IMAGE_TAG="full-container"
     TEST_FAIL=0
+    local full_container_ref="full-container:full-container"
     
     echo "🔧 Testing basic system tools..."
-    run_in_container "which zsh"
-    run_in_container "R --version"
+    run_in_container "$full_container_ref" "which zsh"
+    run_in_container "$full_container_ref" "R --version"
     
-    test_vscode || TEST_FAIL=1
-    test_latex_basic || TEST_FAIL=1
-    test_pandoc || TEST_FAIL=1
-    test_pandoc_plus || TEST_FAIL=1
-    test_nvim_and_plugins || TEST_FAIL=1
-    test_dev_tools || TEST_FAIL=1
-    test_python313 || TEST_FAIL=1
+    test_vscode "$full_container_ref" || TEST_FAIL=1
+    test_latex_basic "$full_container_ref" || TEST_FAIL=1
+    test_pandoc "$full_container_ref" || TEST_FAIL=1
+    test_pandoc_plus "$full_container_ref" || TEST_FAIL=1
+    test_nvim_and_plugins "$full_container_ref" || TEST_FAIL=1
+    test_dev_tools "$full_container_ref" || TEST_FAIL=1
+    test_python313 "$full_container_ref" || TEST_FAIL=1
     
     echo "📋 Checking for copied configuration files..."
-    run_in_container 'ls -la /home/me/ | grep -E "\.(zprofile|tmux\.conf|lintr|Rprofile|bash_profile|npmrc)$"'
+    run_in_container "$full_container_ref" 'ls -la /home/me/ | grep -E "\.(zprofile|tmux\.conf|lintr|Rprofile|bash_profile|npmrc)$"'
     
     if [ "$TEST_FAIL" -eq 0 ]; then
       echo "✅ full-container tests passed!"
@@ -580,12 +591,13 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     CONTAINER_NAME="r-container"
     IMAGE_TAG="r-container"
     TEST_FAIL=0
+    local r_container_ref="r-container:r-container"
     
     echo "🔧 Testing basic system tools..."
-    run_in_container "which zsh"
-    run_in_container "R --version"
+    run_in_container "$r_container_ref" "which zsh"
+    run_in_container "$r_container_ref" "R --version"
     
-    test_r_container_optimized || TEST_FAIL=1
+    test_r_container_optimized "$r_container_ref" || TEST_FAIL=1
     
     if [ "$TEST_FAIL" -eq 0 ]; then
       echo "✅ r-container tests passed!"
@@ -606,22 +618,23 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     # Single target testing (existing logic)
     echo "🧪 Testing container..."
     TEST_FAIL=0
+    local container_ref="${CONTAINER_NAME}:${IMAGE_TAG}"
 
     echo "🔧 Testing basic system tools..."
-    run_in_container "which zsh"
-    run_in_container "R --version"
+    run_in_container "$container_ref" "which zsh"
+    run_in_container "$container_ref" "R --version"
 
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-      test_vscode || TEST_FAIL=1
+      test_vscode "$container_ref" || TEST_FAIL=1
     fi
 
     # LaTeX presence by stages
     if [ "$BUILD_TARGET" = "base-nvim-tex" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-      test_latex_basic || TEST_FAIL=1
+      test_latex_basic "$container_ref" || TEST_FAIL=1
 
       if [ "$BUILD_TARGET" = "base-nvim-tex" ]; then
         echo "🚫 Verifying Pandoc is NOT installed in tex stage..."
-        if run_in_container "which pandoc"; then
+        if run_in_container "$container_ref" "which pandoc"; then
           echo "⚠️  Pandoc found but should not be in tex stage"
           TEST_FAIL=1
         else
@@ -632,54 +645,54 @@ if [ "$TEST_CONTAINER" = "true" ]; then
 
     # Pandoc tests
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-      test_pandoc || TEST_FAIL=1
+      test_pandoc "$container_ref" || TEST_FAIL=1
     fi
 
     # Extra LaTeX packages
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-      test_pandoc_plus || TEST_FAIL=1
+      test_pandoc_plus "$container_ref" || TEST_FAIL=1
     fi
 
     echo "📋 Checking for copied configuration files..."
-    run_in_container 'ls -la /home/me/ | grep -E "\.(zprofile|tmux\.conf|lintr|Rprofile|bash_profile|npmrc)$"'
+    run_in_container "$container_ref" 'ls -la /home/me/ | grep -E "\.(zprofile|tmux\.conf|lintr|Rprofile|bash_profile|npmrc)$"'
 
     # nvim stages and later
     if [ "$BUILD_TARGET" = "base-nvim" ] || [ "$BUILD_TARGET" = "base-nvim-tex" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-      test_nvim_and_plugins || TEST_FAIL=1
+      test_nvim_and_plugins "$container_ref" || TEST_FAIL=1
     fi
 
     # Dev tools are intentionally not present in r-container
     if [ "$BUILD_TARGET" != "r-container" ]; then
-      test_dev_tools || TEST_FAIL=1
+      test_dev_tools "$container_ref" || TEST_FAIL=1
     fi
 
     # R installation tests (new stage 10)
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
       echo "📐 Testing R installation..."
-      run_in_container "R --version" || TEST_FAIL=1
+      run_in_container "$container_ref" "R --version" || TEST_FAIL=1
       # CmdStan is not included in r-container
       if [ "$BUILD_TARGET" != "r-container" ]; then
-        run_in_container "ls -la /opt/cmdstan/bin/" || TEST_FAIL=1
+        run_in_container "$container_ref" "ls -la /opt/cmdstan/bin/" || TEST_FAIL=1
       fi
-      run_in_container "which jags" || TEST_FAIL=1
+      run_in_container "$container_ref" "which jags" || TEST_FAIL=1
     fi
 
     # R package tests (moved to stage 11)
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ] || [ "$BUILD_TARGET" = "r-container" ]; then
       echo "📦 Testing R package installation..."
-      if ! run_in_container 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'; then
+      if ! run_in_container "$container_ref" 'R -e "cat(\"Installed packages:\", length(.packages(all.available=TRUE)), \"\n\")"'; then
         TEST_FAIL=1
       fi
     fi
 
     # r-container specific optimization tests
     if [ "$BUILD_TARGET" = "r-container" ]; then
-      test_r_container_optimized || TEST_FAIL=1
+      test_r_container_optimized "$container_ref" || TEST_FAIL=1
     fi
 
     # Python tests (moved to stage 9)
     if [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r" ] || [ "$BUILD_TARGET" = "base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak" ] || [ "$BUILD_TARGET" = "full-container" ]; then
-      test_python313 || TEST_FAIL=1
+      test_python313 "$container_ref" || TEST_FAIL=1
     fi
 
     if [ "$TEST_FAIL" -eq 0 ]; then
