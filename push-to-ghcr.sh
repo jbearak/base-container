@@ -255,6 +255,18 @@ else
 fi
 
 print_success "All operations completed successfully!"
-print_status "Your images are now available at:"
-print_status "  - https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
-print_status "  - https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+
+if [[ "$PUSH_ALL" == "true" ]]; then
+    print_status "Pushed both containers:"
+    print_status "  - full-container:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+    print_status "  - r-container:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+else
+    print_status "Pushed single container:"
+    if [[ "$TARGET" == "r-container" ]]; then
+        print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+    else
+        print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+    fi
+    echo
+    print_status "💡 To push both containers, use: $0 -a"
+fi
