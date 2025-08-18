@@ -81,8 +81,14 @@ print_size_info() {
   local metadata_file="$2"
   
   # Print compressed (push) size from BuildKit metadata if available
+  # command -v checks if 'jq' (JSON processor) is installed, >/dev/null 2>&1 hides output
+  # [ -s "${metadata_file}" ] checks if the metadata file exists and is not empty
   if command -v jq >/dev/null 2>&1 && [ -s "${metadata_file}" ]; then
+    # jq extracts the container image size from JSON metadata
+    # -r = raw output (no quotes), // empty = fallback if field doesn't exist
+    # || true prevents script from failing if jq command has issues
     compressed_bytes=$(jq -r '."containerimage.descriptor".size // empty' "${metadata_file}" || true)
+    # Check if we got a valid size value (not empty and not JSON null)
     if [ -n "${compressed_bytes}" ] && [ "${compressed_bytes}" != "null" ]; then
       echo "📦 Compressed (push) size: $(human_size "${compressed_bytes}")"
     else
