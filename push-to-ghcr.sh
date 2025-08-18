@@ -101,7 +101,7 @@ build_image() {
     
     if [[ -f "./build-container.sh" ]]; then
         print_status "Using existing build script..."
-        ./build-container.sh --"$target"
+        ./build-container.sh --target "$target"
     else
         print_status "Building directly with docker..."
         docker build --target "$target" -t "${LOCAL_IMAGE_NAME}:${tag}" .
