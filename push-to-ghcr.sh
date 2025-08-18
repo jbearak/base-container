@@ -309,7 +309,7 @@ if [[ "$ALL_PLATFORMS" == "true" ]]; then
         fi
     fi
 else
-    # Original single-platform logic
+    # Default behavior: push existing local images (host platform)
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushing all targets (host platform)..."
         for target in "${VALID_TARGETS[@]}"; do
