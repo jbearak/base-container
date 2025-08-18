@@ -151,7 +151,7 @@ test_pandoc() {
     return 1
   }
   echo "📝 Running comprehensive Pandoc tests (docx, pdf, citations)..."
-  if docker run --rm -v "$(pwd)":/workspace -w /workspace "$container_ref" ./test_pandoc.sh; then
+  if docker run --rm -v "$(pwd)":/workspaces -w /workspaces "$container_ref" ./test_pandoc.sh; then
     return 0
   else
     echo "⚠️  Comprehensive Pandoc tests failed"
@@ -464,7 +464,7 @@ print_container_usage() {
   
   case "$container_name" in
     "r-container")
-      echo "  • Test the R container: docker run -it --rm -v \$(pwd):/workspace ${container_name}:${image_tag}"
+      echo "  • Test the R container: docker run -it --rm -v \$(pwd):/workspaces ${container_name}:${image_tag}"
       if [ "$is_single_target" = "true" ]; then
         echo "  • Test R installation: docker run --rm ${container_name}:${image_tag} R --version"
         echo "  • Test R packages: docker run --rm ${container_name}:${image_tag} R -e 'installed.packages()[1:5,1]'"
@@ -563,7 +563,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     CONTAINER_NAME="full-container"
     IMAGE_TAG="full-container"
     TEST_FAIL=0
-    local full_container_ref="full-container:full-container"
+    full_container_ref="full-container:full-container"
     
     echo "🔧 Testing basic system tools..."
     run_in_container "$full_container_ref" "which zsh"
@@ -594,7 +594,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     CONTAINER_NAME="r-container"
     IMAGE_TAG="r-container"
     TEST_FAIL=0
-    local r_container_ref="r-container:r-container"
+    r_container_ref="r-container:r-container"
     
     echo "🔧 Testing basic system tools..."
     run_in_container "$r_container_ref" "which zsh"
