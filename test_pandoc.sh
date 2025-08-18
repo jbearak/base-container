@@ -151,7 +151,6 @@ generate_example_png() {
         echo "  - The script does not have execute or read permissions."
         echo "  - Python 3 is not available or not in PATH."
         echo "  - Required Python modules (e.g., zlib) are missing."
-        echo "Check permissions, Python 3 installation, and required modules."
         exit 1
     fi
 }
