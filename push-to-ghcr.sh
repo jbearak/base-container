@@ -1,15 +1,37 @@
 #!/bin/bash
 # Push container images to GitHub Container Registry (GHCR)
+#
+# WHY THIS SCRIPT EXISTS:
+# After building containers locally, you often want to share them with others or use them
+# in production. GitHub Container Registry (ghcr.io) is a free service that stores your
+# container images and makes them available to anyone (or just your team, if private).
+#
+# TWO DIFFERENT MODES:
+# 1. DEFAULT MODE: Push existing local images (built with build-all.sh or build-container.sh)
+#    - Uses the platform-specific images like "full-container-arm64"
+#    - Each image only works on its specific architecture
+#
+# 2. MULTI-PLATFORM MODE (-a flag): Build and push multi-platform images
+#    - Creates images that work on both arm64 AND amd64 automatically
+#    - Docker automatically downloads the right version for each user's architecture
+#    - Can't be stored locally - must be pushed directly to registry
+#
+# AUTHENTICATION REQUIRED:
+# Before using this script, you must login to GitHub Container Registry:
+#   docker login ghcr.io
+# Use your GitHub username and a Personal Access Token (not your password)
 
-set -e
+set -e  # Exit if any command fails
 
-# Configuration
-REGISTRY="ghcr.io"
-REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"  # Auto-detects in GitHub Actions
-REPOSITORY="${REPO_OWNER}/base-container"
-LOCAL_IMAGE_NAME="base-container"
-DEFAULT_TAG="latest"
-DEFAULT_TARGET="full-container"
+# Configuration - these variables control where images are pushed
+# WHY WE USE VARIABLES: This makes it easy to change settings without editing the whole script
+REGISTRY="ghcr.io"  # GitHub Container Registry URL
+# Auto-detect repository owner from environment (works in GitHub Actions) or default to jbearak
+REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"
+REPOSITORY="${REPO_OWNER}/base-container"  # Full repository path: ghcr.io/username/base-container
+LOCAL_IMAGE_NAME="base-container"  # Base name for local images
+DEFAULT_TAG="latest"  # Default tag if none specified
+DEFAULT_TARGET="full-container"  # Default container type if none specified
 
 # Colors for output
 RED='\033[0;31m'
@@ -84,11 +106,14 @@ check_ghcr_login() {
 }
 
 # Function to get host architecture for consistent naming
+# WHY WE NEED THIS: When pushing existing local images, we need to know which
+# architecture-specific image to look for (e.g., "full-container-arm64" vs "full-container-amd64")
 get_host_arch() {
     case "$(uname -m)" in
-        x86_64) echo "amd64" ;;
-        aarch64|arm64) echo "arm64" ;;
+        x86_64) echo "amd64" ;;      # Intel/AMD processors (most cloud servers, older Macs)
+        aarch64|arm64) echo "arm64" ;; # Apple Silicon Macs, ARM servers
         *) 
+            # If running on an unsupported architecture, fail with a clear error
             print_error "Unsupported architecture: $(uname -m)"
             print_error "Supported architectures: x86_64, aarch64, arm64"
             exit 1
@@ -109,27 +134,33 @@ get_display_tag() {
 }
 
 # Function to check if local image exists
+# WHY WE CHECK: Before trying to push an image, we should verify it exists locally.
+# This gives a clear error message instead of a confusing Docker error.
 check_local_image() {
-    local target="$1"
-    local tag="$2"
+    local target="$1"  # e.g., "full-container"
+    local tag="$2"     # e.g., "latest" (though we don't use this currently)
     local host_arch=$(get_host_arch)
 
     # Check for arch-specific naming pattern (e.g., "full-container-arm64")
+    # This is the naming convention used by our build scripts
     local arch_specific_name="${target}-${host_arch}"
     if docker image inspect "${arch_specific_name}" >/dev/null 2>&1; then
-        return 0
+        return 0  # Success: image exists
     fi
 
-    return 1
+    return 1  # Failure: image not found
 }
 
-# Function to build image
+# Function to build image if it doesn't exist locally
+# WHY THIS EXISTS: Sometimes you want to push an image but haven't built it yet.
+# The -b flag lets you build and push in one command.
 build_image() {
-    local target="$1"
-    local tag="$2"
+    local target="$1"  # e.g., "full-container"
+    local tag="$2"     # e.g., "latest"
     
     print_status "Building image for target: $target"
     
+    # Try to use the existing build script if available (preferred method)
     if [[ -f "./build-container.sh" ]]; then
         print_status "Using existing build script..."
         case "$target" in
@@ -145,6 +176,7 @@ build_image() {
                 ;;
         esac
     else
+        # Fallback: build directly with docker (less preferred)
         print_status "Building directly with docker..."
         docker build --target "$target" -t "${LOCAL_IMAGE_NAME}:${tag}" .
     fi
@@ -152,38 +184,47 @@ build_image() {
     print_success "Build completed for target: $target"
 }
 
-# Function to push image
+# Function to push a local image to the registry
+# WHY THIS IS COMPLEX: We need to handle different naming conventions and tag formats
+# for different container types (full-container vs r-container)
 push_image() {
-    local target="$1"
-    local tag="$2"
-    local force="$3"
+    local target="$1"   # e.g., "full-container" or "r-container"
+    local tag="$2"      # e.g., "latest"
+    local force="$3"    # "true" if user wants to force push without local image
     local host_arch=$(get_host_arch)
     
+    # Determine the registry image name and tag
     local remote_image="${REGISTRY}/${REPOSITORY}:${tag}"
     
     # For r-container, use a different tag but same repository
+    # WHY: Both containers come from the same source repo, but we want to distinguish them
+    # Result: full-container -> base-container:latest, r-container -> base-container:r-latest
     if [[ "$target" == "r-container" ]]; then
         remote_image="${REGISTRY}/${REPOSITORY}:r-${tag}"
     fi
     
-    # Check if local image exists
+    # Check if local image exists (unless forcing)
     if ! check_local_image "$target" "$tag" && [[ "$force" != "true" ]]; then
         print_error "Local image not found. Use -b to build or -f to force."
         return 1
     fi
     
-    # Use arch-specific naming
-    local source_image="${target}-${host_arch}"
+    # Use arch-specific naming (matches our build scripts)
+    local source_image="${target}-${host_arch}"  # e.g., "full-container-arm64"
     
+    # Verify the expected image exists
     if ! docker image inspect "${source_image}" >/dev/null 2>&1; then
         print_error "Expected image ${source_image} not found"
         print_error "Make sure to build with the current build scripts that create arch-specific names"
         return 1
     fi
     
+    # Tag the local image with the registry name
+    # WHY WE TAG: Docker needs to know where to push the image
     print_status "Tagging image: $source_image -> $remote_image"
     docker tag "$source_image" "$remote_image"
     
+    # Push to registry
     print_status "Pushing image: $remote_image"
     docker push "$remote_image"
     
@@ -191,10 +232,14 @@ push_image() {
 }
 
 # Function to build and push multi-platform image
+# WHY THIS IS DIFFERENT: Multi-platform builds create images that work on both arm64 AND amd64.
+# Docker automatically serves the right architecture to each user. However, these images
+# can't be stored locally - they must be pushed directly to a registry.
 build_and_push_multiplatform() {
-    local target="$1"
-    local tag="$2"
+    local target="$1"  # e.g., "full-container"
+    local tag="$2"     # e.g., "latest"
     
+    # Determine registry destination (same logic as push_image)
     local remote_image="${REGISTRY}/${REPOSITORY}:${tag}"
     
     # For r-container, use a different tag but same repository
@@ -207,6 +252,10 @@ build_and_push_multiplatform() {
     print_status "Destination: $remote_image"
     
     # Build and push multi-platform image directly to registry
+    # --platform: build for both architectures
+    # --target: which Dockerfile stage to build
+    # --push: send directly to registry (can't store locally)
+    # WHY --PUSH: Multi-platform manifests can't exist as local images
     if docker buildx build \
         --platform linux/amd64,linux/arm64 \
         --target "$target" \
