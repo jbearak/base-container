@@ -223,7 +223,6 @@ echo "  docker run -it --rm r-container-arm64"
 echo "  docker run -it --rm r-container-amd64"
 
 echo ""
-print_status "📤 To push to registry as multi-platform images:"
 print_status "These local images are platform-specific, but you can create multi-platform registry images:"
 echo "  ./push-to-ghcr.sh -a                    # Push both targets, both platforms"
 echo "  ./push-to-ghcr.sh -a -t full-container  # Push specific target, both platforms"
