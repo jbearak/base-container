@@ -145,9 +145,9 @@ push_image() {
     
     local remote_image="${REGISTRY}/${REPOSITORY}:${tag}"
     
-    # For r-container, use a different repository
+    # For r-container, use a different tag but same repository
     if [[ "$target" == "r-container" ]]; then
-        remote_image="${REGISTRY}/${REPO_OWNER}/r-container:${tag}"
+        remote_image="${REGISTRY}/${REPOSITORY}:r-${tag}"
     fi
     
     # Check if local image exists
@@ -181,9 +181,9 @@ build_and_push_multiplatform() {
     
     local remote_image="${REGISTRY}/${REPOSITORY}:${tag}"
     
-    # For r-container, use a different repository
+    # For r-container, use a different tag but same repository
     if [[ "$target" == "r-container" ]]; then
-        remote_image="${REGISTRY}/${REPO_OWNER}/r-container:${tag}"
+        remote_image="${REGISTRY}/${REPOSITORY}:r-${tag}"
     fi
     
     print_status "Building and pushing multi-platform image for target: $target"
@@ -340,11 +340,11 @@ if [[ "$ALL_PLATFORMS" == "true" ]]; then
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushed both containers (multi-platform: linux/amd64,linux/arm64):"
         print_status "  - full-container:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
-        print_status "  - r-container:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+        print_status "  - r-container:r-${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
     else
         print_status "Pushed single container (multi-platform: linux/amd64,linux/arm64):"
         if [[ "$TARGET" == "r-container" ]]; then
-            print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+            print_status "  - r-container:r-${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
         else
             print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
         fi
@@ -353,11 +353,11 @@ else
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushed both containers (host platform only):"
         print_status "  - full-container:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
-        print_status "  - r-container:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+        print_status "  - r-container:r-${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
     else
         print_status "Pushed single container (host platform only):"
         if [[ "$TARGET" == "r-container" ]]; then
-            print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
+            print_status "  - r-container:r-${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
         else
             print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
         fi
