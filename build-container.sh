@@ -27,21 +27,22 @@ build_single_target() {
   
   # Use target-specific cache keys for better cache isolation
   local TARGET_CACHE_MODE=""
-  if [ -n "$CACHE_REGISTRY" ]; then
+  # -n = "Not empty" (has coNteNt), -z = "Zero length" (empty)
+  if [ -n "$CACHE_REGISTRY" ]; then  # If CACHE_REGISTRY is NOT empty (user provided a registry URL)
     if [[ "$CACHE_MODE" == *"--cache-from"* ]]; then
       TARGET_CACHE_MODE="--cache-from type=registry,ref=${CACHE_REGISTRY}/cache:${target}"
     fi
     if [[ "$CACHE_MODE" == *"--cache-to"* ]]; then
       TARGET_CACHE_MODE="${TARGET_CACHE_MODE} --cache-to type=registry,ref=${CACHE_REGISTRY}/cache:${target},mode=max"
     fi
-  else
+  else  # If CACHE_REGISTRY IS empty (no registry specified)
     # If no registry cache is specified, use local cache by default (unless --no-cache is used)
-    if [ -z "$NO_CACHE" ]; then
+    if [ -z "$NO_CACHE" ]; then  # If NO_CACHE is empty (meaning caching is enabled)
       # Use per-target cache paths to avoid cross-target contamination
       local cache_path="/tmp/.buildx-cache/${target}"
       TARGET_CACHE_MODE="--cache-from type=local,src=${cache_path} --cache-to type=local,dest=${cache_path},mode=max"
       echo "🗂️  Using local BuildKit cache at ${cache_path}"
-    else
+    else  # If NO_CACHE has content (meaning --no-cache was used)
       TARGET_CACHE_MODE="$CACHE_MODE"
     fi
   fi
