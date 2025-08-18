@@ -43,19 +43,19 @@ Usage: $0 [OPTIONS]
 Push Docker images to GitHub Container Registry (GHCR)
 
 OPTIONS:
-    -t, --target TARGET     Build target to push (default: $DEFAULT_TARGET)
+    -t, --target TARGET     Push specific target only (default: push all targets)
                            Available targets: full-container, r-container
     -g, --tag TAG          Tag for the image (default: $DEFAULT_TAG)
-    -a, --all              Push all build targets
     -b, --build            Build the image before pushing
     -f, --force            Force push even if image doesn't exist locally
     -h, --help             Show this help message
 
 EXAMPLES:
-    $0                                         # Push full-container:latest
-    $0 -t r-container -g v1.0.0              # Push r-container:v1.0.0
-    $0 -a -b                                  # Build and push all targets
-    $0 --build --target full-container --tag dev   # Build and push full-container:dev
+    $0                                         # Push all targets with latest tag
+    $0 -t full-container                       # Push only full-container:latest
+    $0 -t r-container -g v1.0.0              # Push only r-container:v1.0.0
+    $0 -b                                     # Build and push all targets
+    $0 --build --target full-container --tag dev   # Build and push only full-container:dev
 
 PREREQUISITES:
     1. Docker must be installed and running
@@ -174,25 +174,22 @@ push_image() {
 }
 
 # Parse command line arguments
-TARGET="$DEFAULT_TARGET"
+TARGET=""  # Empty means push all targets (consistent with build script)
 TAG="$DEFAULT_TAG"
 BUILD_FIRST=false
-PUSH_ALL=false
+PUSH_ALL=true  # Default to pushing all targets
 FORCE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         -t|--target)
             TARGET="$2"
+            PUSH_ALL=false  # Specific target means don't push all
             shift 2
             ;;
         -g|--tag)
             TAG="$2"
             shift 2
-            ;;
-        -a|--all)
-            PUSH_ALL=true
-            shift
             ;;
         -b|--build)
             BUILD_FIRST=true
@@ -217,6 +214,7 @@ done
 # Validate target
 VALID_TARGETS=("full-container" "r-container")
 if [[ "$PUSH_ALL" == "false" ]]; then
+    # Specific target was provided with -t flag
     if [[ ! " ${VALID_TARGETS[@]} " =~ " ${TARGET} " ]]; then
         print_error "Invalid target: $TARGET"
         print_error "Valid targets: ${VALID_TARGETS[*]}"
@@ -268,5 +266,5 @@ else
         print_status "  - ${TARGET}:${TAG} → https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
     fi
     echo
-    print_status "💡 To push both containers, use: $0 -a"
+    print_status "💡 To push both containers, run without -t flag: $0"
 fi
