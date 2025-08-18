@@ -729,7 +729,7 @@ if [ "$BUILD_MULTIPLE" = "true" ]; then
   print_container_usage "full-container" "full-container"
   print_container_usage "r-container" "r-container"
   echo "  • Tag and push both containers to GitHub Container Registry:"
-  echo "    ./push-to-ghcr.sh -a"
+  echo "    ./push-to-ghcr.sh -a  # -a = --all (push both full-container and r-container)"
   echo "  • Reference in other projects' devcontainer.json files"
 else
   case "$BUILD_TARGET" in
