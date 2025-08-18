@@ -85,30 +85,12 @@ print_size_info() {
   local image_ref="$1"
   local metadata_file="$2"
   
-  # Print compressed (push) size from BuildKit metadata if available
-  # command -v checks if 'jq' (JSON processor) is installed, >/dev/null 2>&1 hides output
-  # [ -s "${metadata_file}" ] checks if the metadata file exists and is not empty
-  if command -v jq >/dev/null 2>&1 && [ -s "${metadata_file}" ]; then
-    # jq extracts the container image size from JSON metadata
-    # -r = raw output (no quotes), // empty = fallback if field doesn't exist
-    # || true prevents script from failing if jq command has issues
-    compressed_bytes=$(jq -r '."containerimage.descriptor".size // empty' "${metadata_file}" || true)
-    # Check if we got a valid size value (not empty and not JSON null)
-    if [ -n "${compressed_bytes}" ] && [ "${compressed_bytes}" != "null" ]; then
-      echo "📦 Compressed (push) size: $(human_size "${compressed_bytes}")"
-    else
-      echo "📦 Compressed (push) size: unavailable (no descriptor in metadata)"
-    fi
-  else
-    echo "📦 Compressed (push) size: unavailable (metadata file missing or jq not installed)"
-  fi
-
   # Print uncompressed local image size
   uncompressed_bytes=$(docker image inspect "${image_ref}" --format '{{.Size}}' 2>/dev/null || true)
   if [ -n "${uncompressed_bytes}" ]; then
-    echo "🗜️  Uncompressed (local) size: $(human_size "${uncompressed_bytes}")"
+    echo "🗜️  Image size: $(human_size "${uncompressed_bytes}")"
   else
-    echo "🗜️  Uncompressed (local) size: unavailable"
+    echo "🗜️  Image size: unavailable"
   fi
 
   # Show recent layer sizes/commands for quick feedback
@@ -639,7 +621,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     # Single target testing (existing logic)
     echo "🧪 Testing container..."
     TEST_FAIL=0
-    local container_ref="${CONTAINER_NAME}:${IMAGE_TAG}"
+    container_ref="${CONTAINER_NAME}:${IMAGE_TAG}"
 
     echo "🔧 Testing basic system tools..."
     run_in_container "$container_ref" "which zsh"
