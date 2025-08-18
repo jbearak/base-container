@@ -101,7 +101,19 @@ build_image() {
     
     if [[ -f "./build-container.sh" ]]; then
         print_status "Using existing build script..."
-        ./build-container.sh --target "$target"
+        case "$target" in
+            "full-container")
+                ./build-container.sh --full-container
+                ;;
+            "r-container")
+                ./build-container.sh --r-container
+                ;;
+            *)
+                print_error "Unknown target for build script: $target"
+                return 1
+                ;;
+        esac
+>>>>>>> 677de53 (Fix: Replace dynamic flag construction with explicit case mapping)
     else
         print_status "Building directly with docker..."
         docker build --target "$target" -t "${LOCAL_IMAGE_NAME}:${tag}" .
