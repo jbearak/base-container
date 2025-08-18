@@ -8,7 +8,7 @@ REGISTRY="ghcr.io"
 REPOSITORY="jbearak/base-container"
 LOCAL_IMAGE_NAME="base-container"
 DEFAULT_TAG="latest"
-DEFAULT_TARGET="full"
+DEFAULT_TARGET="full-container"
 
 # Colors for output
 RED='\033[0;31m'
@@ -43,9 +43,7 @@ Push Docker images to GitHub Container Registry (GHCR)
 
 OPTIONS:
     -t, --target TARGET     Build target to push (default: $DEFAULT_TARGET)
-                           Available targets: base, base-nvim, base-nvim-vscode, 
-                           base-nvim-vscode-tex, base-nvim-vscode-tex-pandoc, 
-                           base-nvim-vscode-tex-pandoc-plus, full
+                           Available targets: full-container, r-container
     -g, --tag TAG          Tag for the image (default: $DEFAULT_TAG)
     -a, --all              Push all build targets
     -b, --build            Build the image before pushing
@@ -53,10 +51,10 @@ OPTIONS:
     -h, --help             Show this help message
 
 EXAMPLES:
-    $0                                    # Push full:latest
-    $0 -t base -g v1.0.0                # Push base:v1.0.0
-    $0 -a -b                             # Build and push all targets
-    $0 --build --target full --tag dev   # Build and push full:dev
+    $0                                         # Push full-container:latest
+    $0 -t r-container -g v1.0.0              # Push r-container:v1.0.0
+    $0 -a -b                                  # Build and push all targets
+    $0 --build --target full-container --tag dev   # Build and push full-container:dev
 
 PREREQUISITES:
     1. Docker must be installed and running
@@ -103,7 +101,7 @@ build_image() {
     
     if [[ -f "./build-container.sh" ]]; then
         print_status "Using existing build script..."
-        ./build-container.sh --target "$target" --tag "$tag" --no-test
+        ./build-container.sh --"$target"
     else
         print_status "Building directly with docker..."
         docker build --target "$target" -t "${LOCAL_IMAGE_NAME}:${tag}" .
@@ -121,9 +119,9 @@ push_image() {
     local local_tag="$tag"
     local remote_image="${REGISTRY}/${REPOSITORY}:${tag}"
     
-    # If tag is 'latest' and target is not 'full', append target to tag
-    if [[ "$tag" == "latest" && "$target" != "full" ]]; then
-        remote_image="${REGISTRY}/${REPOSITORY}:${target}"
+    # For r-container, use a different repository
+    if [[ "$target" == "r-container" ]]; then
+        remote_image="${REGISTRY}/jbearak/r-container:${tag}"
     fi
     
     # Check if local image exists
@@ -138,6 +136,14 @@ push_image() {
         source_image="${LOCAL_IMAGE_NAME}:${tag}"
     elif docker image inspect "${LOCAL_IMAGE_NAME}:${target}" >/dev/null 2>&1; then
         source_image="${LOCAL_IMAGE_NAME}:${target}"
+    elif docker image inspect "r-container:${tag}" >/dev/null 2>&1 && [[ "$target" == "r-container" ]]; then
+        source_image="r-container:${tag}"
+    elif docker image inspect "r-container:${target}" >/dev/null 2>&1 && [[ "$target" == "r-container" ]]; then
+        source_image="r-container:${target}"
+    elif docker image inspect "full-container:${tag}" >/dev/null 2>&1 && [[ "$target" == "full-container" ]]; then
+        source_image="full-container:${tag}"
+    elif docker image inspect "full-container:${target}" >/dev/null 2>&1 && [[ "$target" == "full-container" ]]; then
+        source_image="full-container:${target}"
     else
         print_error "No suitable local image found"
         return 1
@@ -194,7 +200,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate target
-VALID_TARGETS=("base" "base-nvim" "base-nvim-vscode" "base-nvim-vscode-tex" "base-nvim-vscode-tex-pandoc" "base-nvim-vscode-tex-pandoc-plus" "full")
+VALID_TARGETS=("full-container" "r-container")
 if [[ "$PUSH_ALL" == "false" ]]; then
     if [[ ! " ${VALID_TARGETS[@]} " =~ " ${TARGET} " ]]; then
         print_error "Invalid target: $TARGET"
@@ -234,4 +240,6 @@ else
 fi
 
 print_success "All operations completed successfully!"
-print_status "Your images are now available at: https://github.com/jbearak/base-container/pkgs/container/base-container"
+print_status "Your images are now available at:"
+print_status "  - https://github.com/jbearak/base-container/pkgs/container/base-container"
+print_status "  - https://github.com/jbearak/r-container/pkgs/container/r-container"
