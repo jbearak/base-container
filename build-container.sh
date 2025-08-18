@@ -563,7 +563,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     CONTAINER_NAME="full-container"
     IMAGE_TAG="full-container"
     TEST_FAIL=0
-    local full_container_ref="full-container:full-container"
+    full_container_ref="full-container:full-container"
     
     echo "🔧 Testing basic system tools..."
     run_in_container "$full_container_ref" "which zsh"
@@ -594,7 +594,7 @@ if [ "$TEST_CONTAINER" = "true" ]; then
     CONTAINER_NAME="r-container"
     IMAGE_TAG="r-container"
     TEST_FAIL=0
-    local r_container_ref="r-container:r-container"
+    r_container_ref="r-container:r-container"
     
     echo "🔧 Testing basic system tools..."
     run_in_container "$r_container_ref" "which zsh"
