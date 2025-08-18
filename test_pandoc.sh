@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # test_pandoc.sh - tests for Pandoc conversions
-# - Generates a tiny 2x2 RGBA PNG from an inline base64 string (no external deps)
+#
+# REQUIRED DEPENDENCIES (must be present in repository root):
+#   - generate_test_png.py: Creates minimal PNG files for image embedding tests
+#   - install_r_packages.sh: R package installation script (used by Dockerfile)
+#   - R_packages.txt: List of R packages to install (used by Dockerfile)
+#   - r-shell-config: Shell configuration for R environment (used by Dockerfile)
+#   - dotfiles/: Directory containing configuration files (used by Dockerfile)
+#
+# If dependencies are missing, this script will fail with clear error messages.
+#
+# Features:
+# - Generates test PNG images using generate_test_png.py (no external image deps)
 # - Verifies formats, handles optional dependencies with SKIP, and supports debug mode
 # - Cleans artifacts by default; preserves when PANDOC_DEBUG=1
 #
@@ -16,6 +27,75 @@
 #   - md -> html
 
 set -euo pipefail
+
+# Check required dependencies before running any tests
+check_dependencies() {
+    local missing_deps=0
+    
+    # Test-specific dependencies
+    if [[ ! -f "./generate_test_png.py" ]]; then
+        echo "❌ FATAL: generate_test_png.py is missing!"
+        echo "This is a required test dependency for Pandoc image tests."
+        echo "The script should be in the repository root directory."
+        echo "If missing, restore from git history:"
+        echo "  git show 827e83e:generate_test_png.py > generate_test_png.py"
+        echo "  chmod +x generate_test_png.py"
+        missing_deps=1
+    fi
+    
+    # Build dependencies (required by Dockerfile)
+    if [[ ! -f "./install_r_packages.sh" ]]; then
+        echo "❌ FATAL: install_r_packages.sh is missing!"
+        echo "This script is required by the Dockerfile for R package installation."
+        missing_deps=1
+    fi
+    
+    if [[ ! -f "./R_packages.txt" ]]; then
+        echo "❌ FATAL: R_packages.txt is missing!"
+        echo "This file contains the list of R packages to install and is required by the Dockerfile."
+        missing_deps=1
+    fi
+    
+    if [[ ! -f "./r-shell-config" ]]; then
+        echo "❌ FATAL: r-shell-config is missing!"
+        echo "This file contains shell configuration for R and is required by the Dockerfile."
+        missing_deps=1
+    fi
+    
+    if [[ ! -d "./dotfiles" ]]; then
+        echo "❌ FATAL: dotfiles/ directory is missing!"
+        echo "This directory contains configuration files required by the Dockerfile."
+        missing_deps=1
+    else
+        # Check key dotfiles that are explicitly copied by Dockerfile
+        local required_dotfiles=(
+            "dotfiles/tmux.conf"
+            "dotfiles/Rprofile" 
+            "dotfiles/lintr"
+            "dotfiles/shell-common"
+            "dotfiles/zshrc_appends"
+            "dotfiles/config/nvim/init.lua"
+        )
+        
+        for file in "${required_dotfiles[@]}"; do
+            if [[ ! -f "./$file" ]]; then
+                echo "❌ FATAL: $file is missing!"
+                echo "This configuration file is required by the Dockerfile."
+                missing_deps=1
+            fi
+        done
+    fi
+    
+    if [[ $missing_deps -eq 1 ]]; then
+        echo ""
+        echo "Cannot proceed with tests due to missing required dependencies."
+        echo "These files are needed for both testing and container builds."
+        exit 1
+    fi
+}
+
+# Check dependencies first, before any other setup
+check_dependencies
 
 # Result aggregation: run all tests, report summary, exit non-zero if any FAIL
 RESULT=0
@@ -61,9 +141,18 @@ print_summary() {
 # Ensure cleanup runs on any exit, then summary prints, then exit with aggregated RESULT
 trap 'cleanup; print_summary; exit $RESULT' EXIT
 
-# Generate example.png (1x1 PNG) using Python
+# Generate example.png (1x1 PNG) using Python script
 generate_example_png() {
-    ./generate_test_png.py example.png
+    # Note: Dependency check already performed at script start
+    if ! ./generate_test_png.py example.png; then
+        echo "❌ FATAL: Failed to generate test PNG file"
+        echo "The generate_test_png.py script exists but failed to execute."
+        echo "Possible causes:"
+        echo "  - The script does not have execute or read permissions."
+        echo "  - Python 3 is not available or not in PATH."
+        echo "  - Required Python modules (e.g., zlib) are missing."
+        exit 1
+    fi
 }
 # Helper: check a pattern in pandoc format lists, else SKIP
 check_pandoc_support_or_skip() {
