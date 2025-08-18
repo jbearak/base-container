@@ -16,8 +16,9 @@ CACHE_MODE=""
 # Helpers to reduce duplication in docker run checks
 build_single_target() {
   local target="$1"
-  local container_name="$2"
-  local image_tag="$3"
+  # For the current targets, container_name and image_tag are the same as target
+  local container_name="$target"
+  local image_tag="$target"
   
   echo "🏗️  Building target: ${target}..."
   
@@ -444,14 +445,14 @@ human_size() {
 if [ "$BUILD_MULTIPLE" = "true" ]; then
   # Build both targets
   echo "🚀 Building full-container..."
-  if ! build_single_target "full-container" "full-container" "full-container"; then
+  if ! build_single_target "full-container"; then
     echo "❌ Failed to build full-container"
     exit 1
   fi
   
   echo ""
   echo "🚀 Building r-container..."
-  if ! build_single_target "r-container" "r-container" "r-container"; then
+  if ! build_single_target "r-container"; then
     echo "❌ Failed to build r-container"
     exit 1
   fi
@@ -473,7 +474,7 @@ else
       ;;
   esac
   
-  if ! build_single_target "$BUILD_TARGET" "$CONTAINER_NAME" "$IMAGE_TAG"; then
+  if ! build_single_target "$BUILD_TARGET"; then
     echo "❌ Failed to build $BUILD_TARGET"
     exit 1
   fi
