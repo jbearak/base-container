@@ -20,6 +20,9 @@ CACHE_MODE=""
 build_single_target() {
   local target="$1"
   # For the current targets, container_name and image_tag are the same as target
+  # This creates images like "full-container:full-container" and "r-container:r-container"
+  # instead of using "latest" tag. This prevents tag conflicts when building multiple
+  # targets from the same Dockerfile and makes it clear which variant you're using.
   local container_name="$target"
   local image_tag="$target"
   
