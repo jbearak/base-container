@@ -147,7 +147,11 @@ generate_example_png() {
     if ! ./generate_test_png.py example.png; then
         echo "❌ FATAL: Failed to generate test PNG file"
         echo "The generate_test_png.py script exists but failed to execute."
-        echo "Check that the script has execute permissions and Python 3 is available."
+        echo "Possible causes:"
+        echo "  - The script does not have execute or read permissions."
+        echo "  - Python 3 is not available or not in PATH."
+        echo "  - Required Python modules (e.g., zlib) are missing."
+        echo "Check permissions, Python 3 installation, and required modules."
         exit 1
     fi
 }
