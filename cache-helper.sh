@@ -3,7 +3,9 @@
 
 set -e
 
-REGISTRY="${REGISTRY:-ghcr.io/jbearak/base-container}"
+# Configuration - can be overridden with environment variables
+REPO_OWNER="${REPO_OWNER:-jbearak}"  # Override with: export REPO_OWNER=yourusername
+REGISTRY="${REGISTRY:-ghcr.io/${REPO_OWNER}/base-container}"
 TARGETS=("base" "base-nvim" "base-nvim-vscode" "base-nvim-vscode-tex" "base-nvim-vscode-tex-pandoc" "base-nvim-vscode-tex-pandoc-plus" "full")
 
 usage() {

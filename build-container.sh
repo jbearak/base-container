@@ -5,6 +5,7 @@
 
 set -e
 
+# Configuration - can be overridden with environment variables
 CONTAINER_NAME="base-container"
 IMAGE_TAG="latest"
 BUILD_TARGET="" # Will be set to build both full-container and r-container if not specified
@@ -15,6 +16,7 @@ BUILD_MULTIPLE=false
 DEBUG_MODE=""
 CACHE_REGISTRY=""
 CACHE_MODE=""
+REPO_OWNER="${REPO_OWNER:-jbearak}"  # Override with: export REPO_OWNER=yourusername
 
 # Helpers to reduce duplication in docker run checks
 build_single_target() {
@@ -485,16 +487,16 @@ print_container_usage() {
         echo "  • Test R installation: docker run --rm ${container_name}:${image_tag} R --version"
         echo "  • Test R packages: docker run --rm ${container_name}:${image_tag} R -e 'installed.packages()[1:5,1]'"
         echo "  • Tag and push to GitHub Container Registry:"
-        echo "    docker tag ${container_name}:${image_tag} ghcr.io/jbearak/${container_name}:${image_tag}"
-        echo "    docker push ghcr.io/jbearak/${container_name}:${image_tag}"
+        echo "    docker tag ${container_name}:${image_tag} ghcr.io/${REPO_OWNER}/${container_name}:${image_tag}"
+        echo "    docker push ghcr.io/${REPO_OWNER}/${container_name}:${image_tag}"
       fi
       ;;
     "full-container")
       echo "  • Test the full development container: docker run -it --rm -v \$(pwd):/workspaces/project ${container_name}:${image_tag}"
       if [ "$is_single_target" = "true" ]; then
         echo "  • Tag and push to GitHub Container Registry:"
-        echo "    docker tag ${container_name}:${image_tag} ghcr.io/jbearak/${container_name}:${image_tag}"
-        echo "    docker push ghcr.io/jbearak/${container_name}:${image_tag}"
+        echo "    docker tag ${container_name}:${image_tag} ghcr.io/${REPO_OWNER}/${container_name}:${image_tag}"
+        echo "    docker push ghcr.io/${REPO_OWNER}/${container_name}:${image_tag}"
       fi
       ;;
   esac

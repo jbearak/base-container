@@ -3,9 +3,10 @@
 
 set -e
 
-# Configuration
+# Configuration - can be overridden with environment variables
 REGISTRY="ghcr.io"
-REPOSITORY="jbearak/base-container"
+REPO_OWNER="${REPO_OWNER:-jbearak}"  # Override with: export REPO_OWNER=yourusername
+REPOSITORY="${REPO_OWNER}/base-container"
 LOCAL_IMAGE_NAME="base-container"
 DEFAULT_TAG="latest"
 DEFAULT_TARGET="full-container"
@@ -139,7 +140,7 @@ push_image() {
     
     # For r-container, use a different repository
     if [[ "$target" == "r-container" ]]; then
-        remote_image="${REGISTRY}/jbearak/r-container:${tag}"
+        remote_image="${REGISTRY}/${REPO_OWNER}/r-container:${tag}"
     fi
     
     # Check if local image exists
@@ -255,5 +256,5 @@ fi
 
 print_success "All operations completed successfully!"
 print_status "Your images are now available at:"
-print_status "  - https://github.com/jbearak/base-container/pkgs/container/base-container"
-print_status "  - https://github.com/jbearak/r-container/pkgs/container/r-container"
+print_status "  - https://github.com/${REPO_OWNER}/base-container/pkgs/container/base-container"
+print_status "  - https://github.com/${REPO_OWNER}/r-container/pkgs/container/r-container"
