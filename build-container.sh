@@ -8,6 +8,9 @@ set -e
 CONTAINER_NAME="base-container"
 IMAGE_TAG="latest"
 BUILD_TARGET="" # Will be set to build both full-container and r-container if not specified
+# Note: BUILD_MULTIPLE starts as false but gets set to true later if BUILD_TARGET remains empty.
+# This allows the script to default to building both containers when no specific target is given,
+# while still supporting single-target builds when a specific --target flag is used.
 BUILD_MULTIPLE=false
 DEBUG_MODE=""
 CACHE_REGISTRY=""
