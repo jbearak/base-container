@@ -29,7 +29,6 @@ REGISTRY="ghcr.io"  # GitHub Container Registry URL
 # Auto-detect repository owner from environment (works in GitHub Actions) or default to jbearak
 REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"
 REPOSITORY="${REPO_OWNER}/base-container"  # Full repository path: ghcr.io/username/base-container
-LOCAL_IMAGE_NAME="base-container"  # Base name for local images
 DEFAULT_TAG="latest"  # Default tag if none specified
 DEFAULT_TARGET="full-container"  # Default container type if none specified
 
@@ -92,16 +91,20 @@ EOF
 }
 
 # Function to check if user is logged in to GHCR
+# WHY WE CHECK: Pushing to a registry requires authentication. Better to fail early
+# with a clear message than get a confusing error during the push.
 check_ghcr_login() {
     print_status "Checking GHCR authentication..."
     
     # Check if credentials exist in Docker config
+    # This is a basic check - the actual push will verify if credentials work
     if [[ -f ~/.docker/config.json ]] && grep -q "ghcr.io" ~/.docker/config.json 2>/dev/null; then
-        print_success "GHCR authentication verified"
+        print_success "GHCR authentication found in Docker config"
         return 0
     fi
     
     print_error "Not logged in to GHCR. Please run: docker login ghcr.io"
+    print_error "Use your GitHub username and a Personal Access Token (not your password)"
     exit 1
 }
 
@@ -178,7 +181,7 @@ build_image() {
     else
         # Fallback: build directly with docker (less preferred)
         print_status "Building directly with docker..."
-        docker build --target "$target" -t "${LOCAL_IMAGE_NAME}:${tag}" .
+        docker build --target "$target" -t "${target}:${tag}" .
     fi
     
     print_success "Build completed for target: $target"
@@ -404,24 +407,24 @@ print_success "All operations completed successfully!"
 if [[ "$ALL_PLATFORMS" == "true" ]]; then
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushed both containers (multi-platform: linux/amd64,linux/arm64):"
-        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
-        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
+        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
     else
         print_status "Pushed single container (multi-platform: linux/amd64,linux/arm64):"
         local display_tag="${TAG}"
         [[ "$TARGET" == "r-container" ]] && display_tag="r-${TAG}"
-        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
+        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
     fi
 else
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushed both containers (host platform only):"
-        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
-        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
+        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
     else
         print_status "Pushed single container (host platform only):"
         local display_tag="${TAG}"
         [[ "$TARGET" == "r-container" ]] && display_tag="r-${TAG}"
-        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/${LOCAL_IMAGE_NAME}"
+        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
         echo
         print_status "💡 To push both containers, run without -t flag: $0"
         print_status "💡 To push multi-platform images, add -a flag: $0 -a"

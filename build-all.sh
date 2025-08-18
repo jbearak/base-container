@@ -18,8 +18,8 @@
 # - r-container-amd64
 
 # Exit immediately if any command fails (fail-fast behavior)
-# This prevents the script from continuing with remaining builds if one fails unexpectedly
-# Note: We handle expected build failures gracefully with explicit error checking
+# NOTE: In parallel mode, background processes (&) are not affected by set -e
+# We handle their failures explicitly with wait and exit code checking
 set -e
 
 # Configuration

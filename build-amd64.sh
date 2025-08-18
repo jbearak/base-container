@@ -18,6 +18,21 @@ set -e  # Exit if any command fails
 # Configuration
 PLATFORM="linux/amd64"           # Target Intel/AMD 64-bit architecture
 TARGET="${1:-full-container}"    # Default to full-container if no argument provided
+
+# Validate the target is one we support
+# WHY WE VALIDATE: Better to fail early with a clear error than build something unexpected
+case "$TARGET" in
+    "full-container"|"r-container")
+        # Valid targets - continue
+        ;;
+    *)
+        echo "❌ ERROR: Invalid target '$TARGET'"
+        echo "Valid targets: full-container, r-container"
+        echo "Usage: $0 [full-container|r-container]"
+        exit 1
+        ;;
+esac
+
 IMAGE_TAG="${TARGET}-amd64"      # Name the image to show its architecture
 
 echo "🏗️  Building ${TARGET} for ${PLATFORM}..."
