@@ -436,10 +436,6 @@ if ! is_package_excluded "btw"; then
 else
     echo "⏭️  Skipping btw (excluded)"
 fi
-        echo "❌"
-        failed_packages+=("btw")
-    fi
-fi
 
 # Final summary
 end_time=$(date +%s)
