@@ -54,7 +54,6 @@ Local image naming remains explicit for clarity:
 
 Multi-platform (both amd64 + arm64) publishing is still handled by `push-to-ghcr.sh -a`, which uses buildx to create and push a manifest list. This keeps the everyday developer loop fast and simple while still supporting distribution.
 
-Deprecated (removed) legacy scripts: `build-container.sh`, `build-amd64.sh`, and `build-all.sh` have been retired to reduce cognitive load and maintenance surface. Their functionality is fully covered by `build.sh` + `push-to-ghcr.sh`. Physical script files will be removed shortly; do not rely on them.
 #### Cache & Variants Examples
 ```bash
 # Standard host build
@@ -389,7 +388,7 @@ The container uses [pak](https://pak.r-lib.org/) for R package management, provi
 ./build.sh full-container
 
 # Build for AMD64 platform (cross-platform on Apple Silicon)
-./build-amd64.sh full-container
+./build.sh --amd64 full-container
 
 # Build using registry cache
 ./build.sh --amd64 full-container   # cross-build example
