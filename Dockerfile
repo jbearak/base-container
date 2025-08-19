@@ -225,9 +225,9 @@ RUN set -e; \
     RELEASE_INFO=$(curl -s https://api.github.com/repos/charmbracelet/glow/releases/latest); \
     GLOW_VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
     echo "Installing glow version: ${GLOW_VERSION}"; \
-    # Construct URL for .deb package (glow uses different naming for x86_64 vs arm64)
+    # Construct URL for .deb package (glow uses consistent naming for both architectures)
     if [ "$GLOW_ARCH" = "x86_64" ]; then \
-        GLOW_DEB_URL="https://github.com/charmbracelet/glow/releases/download/${GLOW_VERSION}/glow_${GLOW_VERSION#v}_linux_amd64.deb"; \
+        GLOW_DEB_URL="https://github.com/charmbracelet/glow/releases/download/${GLOW_VERSION}/glow_${GLOW_VERSION#v}_amd64.deb"; \
     else \
         GLOW_DEB_URL="https://github.com/charmbracelet/glow/releases/download/${GLOW_VERSION}/glow_${GLOW_VERSION#v}_${GLOW_ARCH}.deb"; \
     fi; \
@@ -305,40 +305,51 @@ RUN set -e; \
     difft --version
 
 # ---------------------------------------------------------------------------
-# Install latest Go from official source (Ubuntu's version is outdated)
+# Install Go - use apt for AMD64 to avoid QEMU emulation issues
 # ---------------------------------------------------------------------------
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -e; \
     ARCH="$(dpkg --print-architecture)"; \
     case "$ARCH" in \
-      amd64) GO_ARCH="amd64" ;; \
-      arm64) GO_ARCH="arm64" ;; \
-      *) echo "Unsupported arch for Go: $ARCH (supported: amd64, arm64)"; exit 1 ;; \
-    esac; \
-    LATEST_GO_VERSION="$(curl -fsSL "https://go.dev/VERSION?m=text" | head -n1)"; \
-    GO_URL="https://go.dev/dl/${LATEST_GO_VERSION}.linux-${GO_ARCH}.tar.gz"; \
-    GO_SIG_URL="https://go.dev/dl/${LATEST_GO_VERSION}.linux-${GO_ARCH}.tar.gz.asc"; \
-    echo "Installing Go ${LATEST_GO_VERSION} for ${GO_ARCH} from ${GO_URL}"; \
-    # Download Go tarball and signature
-    curl -fsSL "${GO_URL}" -o /tmp/go.tar.gz; \
-    curl -fsSL "${GO_SIG_URL}" -o /tmp/go.tar.gz.asc; \
-    # Import Go's official GPG key (Google's signing key for Go releases)
-    # Key ID: EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796
-    gpg --batch --keyserver keyserver.ubuntu.com --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796 || \
-    gpg --batch --keyserver keys.openpgp.org --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796 || \
-    gpg --batch --keyserver pgp.mit.edu --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796; \
-    # Verify the signature
-    echo "Verifying Go tarball signature..."; \
-    gpg --batch --verify /tmp/go.tar.gz.asc /tmp/go.tar.gz; \
-    echo "✅ Go tarball signature verified successfully"; \
-    # Install Go
-    rm -rf /usr/local/go; \
-    tar -C /usr/local -xzf /tmp/go.tar.gz; \
-    rm /tmp/go.tar.gz /tmp/go.tar.gz.asc; \
-    echo "Installed Go version: ${LATEST_GO_VERSION}"
-
-# Add Go to PATH for all users
-ENV PATH=$PATH:/usr/local/go/bin
+      amd64) \
+        echo "Installing Go from Ubuntu apt repository for AMD64 (avoids QEMU emulation issues)"; \
+        apt-get update -qq && \
+        apt-get install -y --no-install-recommends golang-go && \
+        apt-get clean && rm -rf /var/lib/apt/lists/*; \
+        GO_VERSION=$(go version | awk '{print $3}'); \
+        echo "Installed Go version: ${GO_VERSION} from apt"; \
+        ;; \
+      arm64) \
+        echo "Installing latest Go from official source for ARM64"; \
+        LATEST_GO_VERSION="$(curl -fsSL "https://go.dev/VERSION?m=text" | head -n1)"; \
+        GO_URL="https://go.dev/dl/${LATEST_GO_VERSION}.linux-arm64.tar.gz"; \
+        GO_SIG_URL="https://go.dev/dl/${LATEST_GO_VERSION}.linux-arm64.tar.gz.asc"; \
+        echo "Installing Go ${LATEST_GO_VERSION} for arm64 from ${GO_URL}"; \
+        # Download Go tarball and signature
+        curl -fsSL "${GO_URL}" -o /tmp/go.tar.gz; \
+        curl -fsSL "${GO_SIG_URL}" -o /tmp/go.tar.gz.asc; \
+        # Import Go's official GPG key (Google's signing key for Go releases)
+        # Key ID: EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796
+        gpg --batch --keyserver keyserver.ubuntu.com --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796 || \
+        gpg --batch --keyserver keys.openpgp.org --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796 || \
+        gpg --batch --keyserver pgp.mit.edu --recv-keys EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796; \
+        # Verify the signature
+        echo "Verifying Go tarball signature..."; \
+        gpg --batch --verify /tmp/go.tar.gz.asc /tmp/go.tar.gz; \
+        echo "✅ Go tarball signature verified successfully"; \
+        # Install Go
+        rm -rf /usr/local/go; \
+        tar -C /usr/local -xzf /tmp/go.tar.gz; \
+        rm /tmp/go.tar.gz /tmp/go.tar.gz.asc; \
+        echo "Installed Go version: ${LATEST_GO_VERSION}"; \
+        # Add Go to PATH for all users
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/environment; \
+        ;; \
+      *) \
+        echo "Unsupported arch for Go: $ARCH (supported: amd64, arm64)"; \
+        exit 1; \
+        ;; \
+    esac
 
 # ---------------------------------------------------------------------------
 # Install latest stable Neovim binary
@@ -559,8 +570,26 @@ USER me
 ENV GOPATH=/home/me/go
 ENV PATH=$PATH:$GOPATH/bin:/usr/local/go/bin
 RUN mkdir -p $GOPATH/bin && \
-    go install github.com/cweill/gotests/gotests@latest && \
-    go install golang.org/x/tools/gopls@latest
+    # Use apt packages for AMD64 to avoid Go compiler segfaults, compile from source for other architectures
+    if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+        echo "Using apt packages and pre-built binaries for Go tools on AMD64";\
+    else \
+        go install github.com/cweill/gotests/gotests@latest && \
+        go install golang.org/x/tools/gopls@latest; \
+    fi
+
+# Install Go tools for AMD64 using apt (as root) to avoid compiler segfaults
+USER root
+RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+        echo "Installing Go tools via apt on AMD64 to avoid compiler segfaults..." && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends golang-golang-x-tools && \
+        apt-get clean && rm -rf /var/lib/apt/lists/* && \
+        echo "✅ gopls installed via apt (gotests skipped on AMD64 due to availability)"; \
+    fi
+
+# Switch back to 'me' user
+USER me
 
 # Install Python development tools for nvim
 RUN pip3 install --user --break-system-packages \
