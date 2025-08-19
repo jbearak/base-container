@@ -88,6 +88,7 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
   6. Tar fallback: If buildx `--load` retries exhaust, a final archived export is attempted (`--output type=docker,dest=...`).
   7. Local registry fallback: If tar export fails and `ENABLE_REGISTRY_FALLBACK=1`, launches a disposable local registry (`localhost:5000`) and re-runs build with `--push`, then pulls and retags locally.
   8. Automatic daemon restarts: Helper detects unavailable Docker daemon and attempts restart (Codespaces / docker-in-docker environments).
+  9. Rootless BuildKit (experimental): Set `ROOTLESS_BUILDKIT=1` (with `buildctl` installed) to bypass the Docker daemon for non-`load` modes. Falls back automatically on failure.
 
   Example usages:
 
@@ -123,11 +124,14 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
   | `ENABLE_REGISTRY_FALLBACK` | Enable local registry fallback after tar fail | `1` |
   | `NATIVE_FAST_PATH` | Allow classic `docker build` when arch matches | `1` |
   | `FORCE_BUILDX` | Force buildx even if native fast path eligible | `0` |
+  | `ROOTLESS_BUILDKIT` | Use buildctl directly (daemon bypass) | `0` |
+  | `BUILDKIT_BIN` | Path to buildctl when rootless enabled | `buildctl` |
 
   Troubleshooting tips:
   * Prefer `IMAGE_OUTPUT=oci` or `push` to avoid daemon crashes caused by large `--load` transfers.
   * If the daemon keeps exiting: check disk (`docker system df`) and consider lowering concurrency or splitting targets.
   * `--load` should only be used if you must `docker run` the image locally immediately.
+  * Rootless mode reduces daemon instability during huge exports; install BuildKit (`buildctl`) first and prefer `IMAGE_OUTPUT=oci`.
 
 
 ```jsonc

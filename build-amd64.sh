@@ -61,8 +61,86 @@ echo "🏗️  Building ${TARGET} for ${PLATFORM} (will try up to ${MAX_RETRIES}
 IMAGE_OUTPUT="${IMAGE_OUTPUT:-oci}"
 PUSH_TAG="${PUSH_TAG:-}"  # e.g. ghcr.io/you/base-container:latest
 
+# Optional: Rootless/buildkitd (dockerless) direct invocation support.
+# If ROOTLESS_BUILDKIT=1 and buildctl is available, attempt to use it for non-load outputs,
+# bypassing the Docker daemon entirely (avoids daemon export instability). Only supported for
+# IMAGE_OUTPUT in (oci, tar, none, push) where we can map outputs to buildctl frontends.
+ROOTLESS_BUILDKIT="${ROOTLESS_BUILDKIT:-0}"
+BUILDKIT_BIN="${BUILDKIT_BIN:-buildctl}"   # override if custom path
+if [ "$ROOTLESS_BUILDKIT" = "1" ] && [ "$IMAGE_OUTPUT" = "load" ]; then
+        echo "⚠️  ROOTLESS_BUILDKIT requested but IMAGE_OUTPUT=load requires daemon; disabling rootless for this run." >&2
+        ROOTLESS_BUILDKIT=0
+fi
+
 if [ "$IMAGE_OUTPUT" != "load" ]; then
         echo "🚫 Skipping native docker build / --load export because IMAGE_OUTPUT=$IMAGE_OUTPUT"
+        if [ "$ROOTLESS_BUILDKIT" = "1" ]; then
+                if command -v "$BUILDKIT_BIN" >/dev/null 2>&1; then
+                        echo "🛠️  Using rootless BuildKit ('$BUILDKIT_BIN') path (daemon bypass)."
+                        # Map IMAGE_OUTPUT to buildctl output spec
+                        artifact_path=""
+                        output_type=""
+                        case "$IMAGE_OUTPUT" in
+                                oci)
+                                        artifact_path="${IMAGE_TAG}.oci"; output_type="oci" ;;
+                                tar)
+                                        artifact_path="${IMAGE_TAG}.tar"; output_type="docker" ;;
+                                none)
+                                        output_type="local"; artifact_path="/dev/null" ;;
+                                push)
+                                        if [ -z "$PUSH_TAG" ]; then
+                                                echo "❌ IMAGE_OUTPUT=push requires PUSH_TAG." >&2; exit 1; fi
+                                        output_type="image" ;;
+                        esac
+                        # buildctl requires a context and Dockerfile; we assume working dir root.
+                        # Use inline frontend parameters for target & platform.
+                        attempt=1
+                        while :; do
+                                echo "🔁 Rootless build attempt ${attempt}/${MAX_RETRIES} (${IMAGE_OUTPUT})..."
+                                set +e
+                                if [ "$IMAGE_OUTPUT" = push ]; then
+                                        "$BUILDKIT_BIN" build \
+                                                --progress=plain \
+                                                --frontend=dockerfile.v0 \
+                                                --local context=. \
+                                                --local dockerfile=. \
+                                                --opt target="${TARGET}" \
+                                                --opt platform="${PLATFORM}" \
+                                                --output type=image,name="${PUSH_TAG}",push=true
+                                else
+                                        "$BUILDKIT_BIN" build \
+                                                --progress=plain \
+                                                --frontend=dockerfile.v0 \
+                                                --local context=. \
+                                                --local dockerfile=. \
+                                                --opt target="${TARGET}" \
+                                                --opt platform="${PLATFORM}" \
+                                                --output type="${output_type}",dest="${artifact_path}"
+                                fi
+                                status=$?
+                                set -e
+                                if [ $status -eq 0 ]; then
+                                        echo "✅ Rootless build succeeded (${IMAGE_OUTPUT})."
+                                        if [ -n "$artifact_path" ] && [ -f "$artifact_path" ] && [ "$artifact_path" != /dev/null ]; then
+                                                echo "📦 Artifact: $artifact_path"
+                                        fi
+                                        [ "$IMAGE_OUTPUT" = push ] && echo "🚀 Pushed: $PUSH_TAG"
+                                        echo "Done."; exit 0
+                                fi
+                                echo "❌ Rootless attempt ${attempt} failed (status $status)."
+                                if [ $attempt -lt $MAX_RETRIES ]; then
+                                        echo "⏱️  Retrying after ${SLEEP_BETWEEN}s..."; sleep "$SLEEP_BETWEEN"; attempt=$((attempt+1))
+                                else
+                                        echo "🛑 Exhausted rootless retries; falling back to docker buildx path." >&2
+                                        break
+                                fi
+                        done
+                else
+                        echo "⚠️  ROOTLESS_BUILDKIT=1 but buildctl not found; continuing with docker buildx." >&2
+                fi
+        fi
+        # Reuse (or define lightweight) helpers early for this branch. We'll later re-define a more
+        # robust restart_docker_if_needed for the legacy --load path (harmless re-definition).
         restart_docker_if_needed() {
                 if ! docker info >/dev/null 2>&1; then
                         echo "⚠️  Docker daemon unavailable. Attempting restart..."
@@ -80,7 +158,7 @@ if [ "$IMAGE_OUTPUT" != "load" ]; then
                                 echo "⚠️  Could not create dedicated builder; falling back to default." >&2
                         }
                 else
-                        docker buildx use "$builder_name" >/dev/null 2>&1 || true
+                        docker buildx use "$builder_name" >/devnull 2>&1 || true
                 fi
         }
         ensure_builder
@@ -110,6 +188,8 @@ if [ "$IMAGE_OUTPUT" != "load" ]; then
         attempt=1
         while :; do
                 echo "🔁 Build attempt ${attempt}/${MAX_RETRIES} (buildx output: ${IMAGE_OUTPUT})..."
+                # Ensure daemon (used for buildx driver=docker-container) is healthy each attempt
+                restart_docker_if_needed || true
                 set +e
                 docker buildx build \
                         --platform "${PLATFORM}" \
