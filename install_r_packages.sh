@@ -58,42 +58,64 @@ install_packages_with_pak() {
     local packages_list="$1"
     echo "📦 Installing CRAN packages with pak..."
     
-    # Create R script for pak installation with simple progress reporting
+    # Create R script for pak installation with minimal output unless there's an error
     local r_script="
     library(pak)
+    
+    # Configure pak to prefer binary packages on AMD64
+    if (R.Version()\$arch == 'x86_64' && R.Version()\$os == 'linux-gnu') {
+        # Set pak to prefer binary packages
+        tryCatch({
+            pak::pak_config_set(dependencies = TRUE)
+            pak::pak_config_set(ask = FALSE)
+            cat('Configured pak dependencies and ask settings\\n')
+        }, error = function(e) {
+            cat('Warning: pak_config_set not available in this pak version\\n')
+        })
+        
+        # Force binary package preference
+        options(pkgType = 'binary')
+        options(install.packages.compile.from.source = 'never')
+        cat('Configured pak to prefer binary packages on AMD64\\n')
+    }
     
     # Read packages from file
     packages <- readLines('$PACKAGES_FILE')
     packages <- packages[packages != '']  # Remove empty lines
     
     cat('Installing', length(packages), 'packages with pak...\\n')
+    cat('Platform:', R.Version()\$arch, R.Version()\$os, '\\n')
+    cat('Package type preference:', getOption('pkgType'), '\\n')
     
-    # Configure pak to show building messages but suppress detailed output
-    options(pak.no_extra_messages = FALSE)
-    
-    # Install packages with pak
+    # Install packages with pak - suppress verbose output unless there's an error
     tryCatch({
+        cat('Starting pak installation...\\n')
         pak::pkg_install(packages, ask = FALSE)
-        cat('SUCCESS: All CRAN packages installed\\n')
+        cat('SUCCESS: All CRAN packages installed with pak\\n')
     }, error = function(e) {
-        cat('ERROR:', conditionMessage(e), '\\n')
+        cat('PAK_ERROR:', conditionMessage(e), '\\n')
+        cat('Platform details for debugging:\\n')
+        cat('Compile from source setting:', getOption('install.packages.compile.from.source'), '\\n')
+        cat('Repositories:', paste(names(getOption('repos')), getOption('repos'), sep='=', collapse=', '), '\\n')
         quit(status = 1)
     })
     "
     
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo "R script for pak installation:"
-        echo "$r_script"
-        echo "Executing pak installation..."
-    fi
+    # Execute pak installation - capture output to show only on failure
+    local pak_output
+    pak_output=$(echo "$r_script" | R --slave --no-restore 2>&1)
+    local pak_exit_code=$?
     
-    # Execute pak installation
-    if echo "$r_script" | R --slave --no-restore; then
+    if [[ $pak_exit_code -eq 0 ]]; then
         echo "✅ CRAN packages installed successfully with pak"
+        # Show just the success message from pak output
+        echo "$pak_output" | grep -E "(SUCCESS|Configured|Installing.*packages)"
         installed_count=$((installed_count + total_packages))
         return 0
     else
-        echo "❌ pak installation failed, falling back to individual package installation"
+        echo "❌ pak installation failed (exit code: $pak_exit_code), falling back to individual package installation"
+        echo "pak error details:"
+        echo "$pak_output" | sed 's/^/  /'
         return 1
     fi
 }
@@ -105,43 +127,82 @@ install_package_individual() {
     pkg <- '$package'
     
     if (require(pkg, character.only=TRUE, quietly=TRUE)) { 
-        cat('already installed\\n') 
+        cat('ALREADY_INSTALLED\\n') 
     } else { 
-        cat('📦 Building', pkg, '...\\n')
-        flush.console()
-        start_time <- Sys.time()
-        install.packages(pkg, repos='https://cloud.r-project.org/', dependencies=TRUE, quiet=TRUE)
-        end_time <- Sys.time()
-        duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
+        # Show platform and method info upfront
+        cat('INSTALLING_INFO:', R.Version()\$arch, R.Version()\$os, 'pkgType=', getOption('pkgType'), 'compile=', getOption('install.packages.compile.from.source'), '\\n')
         
-        if (require(pkg, character.only=TRUE, quietly=TRUE)) {
-            cat('✅ Built', pkg, 'in', duration, 'seconds\\n')
-            cat('success\\n')
-        } else {
-            cat('failed\\n')
-        }
+        start_time <- Sys.time()
+        
+        # Capture detailed installation output only for debugging failures
+        tryCatch({
+            # Attempt installation - quiet for successful installs
+            install.packages(pkg, repos=getOption('repos'), dependencies=TRUE, quiet=TRUE)
+            
+            end_time <- Sys.time()
+            duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
+            
+            if (require(pkg, character.only=TRUE, quietly=TRUE)) {
+                cat('INSTALL_SUCCESS:', duration, 'seconds\\n')
+            } else {
+                # Package installed but failed to load - show details
+                cat('INSTALL_FAILED: Package installed but failed to load\\n')
+            }
+        }, error = function(e) {
+            # Installation failed - show detailed debug info
+            end_time <- Sys.time()
+            duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
+            cat('INSTALL_ERROR after', duration, 'seconds\\n')
+            cat('Error message:', conditionMessage(e), '\\n')
+            
+            # Try to get more details about the failure
+            available_pkgs <- available.packages()
+            if (pkg %in% rownames(available_pkgs)) {
+                cat('Package found in repository\\n')
+            } else {
+                cat('WARNING: Package not found in available packages\\n')
+            }
+        })
     }"
     
-    echo -n "📦 Installing $package... "
+    # Extract platform info first to show in the progress line
+    local platform_info
+    platform_info=$(echo "cat(R.Version()\$arch, R.Version()\$os, 'pkgType=', getOption('pkgType'))" | R --slave --no-restore 2>/dev/null | tr '\n' ' ')
+    
+    echo "📦 Installing $package [$platform_info]..."
     package_start=$(date +%s)
     
     # Capture R output
     local r_output
     r_output=$(echo "$r_command" | R --slave --no-restore 2>&1)
     
-    # Show output in debug mode
-    if [[ "$DEBUG_MODE" == "true" ]]; then
-        echo "$r_output"
-    fi
+    # Show the installation info line
+    echo "$r_output" | grep "INSTALLING_INFO:" | sed 's/INSTALLING_INFO: /  Method: /'
     
-    # Check if the output contains "success" or "already installed"
-    if echo "$r_output" | grep -q -E "(success|already installed)"; then
-        echo "✅"
+    # Check if the output contains success indicators
+    if echo "$r_output" | grep -q -E "(INSTALL_SUCCESS|ALREADY_INSTALLED)"; then
+        local duration
+        duration=$(echo "$r_output" | grep "INSTALL_SUCCESS:" | sed 's/.*: //' | sed 's/ seconds/s/')
+        if [[ -n "$duration" ]]; then
+            echo "  ✅ Success in $duration"
+        else
+            echo "  ✅ Already installed"
+        fi
         ((installed_count++))
         return 0
     else
-        echo "❌"
-        failed_packages+=("$package")
+        echo "  ❌ Failed"
+        # Show detailed output only for failed packages
+        echo "$r_output" | grep -v "INSTALLING_INFO:" | sed 's/^/    /'
+        
+        # Extract error message for summary
+        local error_msg
+        error_msg=$(echo "$r_output" | grep -E "(INSTALL_ERROR|INSTALL_FAILED)" | head -1 | sed 's/.*: //')
+        if [[ -n "$error_msg" ]]; then
+            failed_packages+=("$package: $error_msg")
+        else
+            failed_packages+=("$package: Unknown error")
+        fi
         return 1
     fi
 }
@@ -335,14 +396,15 @@ echo "   🔧 Method: pak with fallback to install.packages()"
 echo
 
 if [[ $failed_count -gt 0 ]]; then
-    echo "❌ FAILED PACKAGES:"
-    echo "==================="
-    for pkg in "${failed_packages[@]}"; do
-        echo "   • $pkg"
+    echo "❌ FAILED PACKAGES WITH ERROR DETAILS:"
+    echo "======================================"
+    for pkg_error in "${failed_packages[@]}"; do
+        echo "   • $pkg_error"
     done
     echo
     echo "⚠️  Build completed with $failed_count failed package installations."
     echo "    Consider investigating these packages and their system dependencies."
+    echo "    Check above for binary vs source installation attempts and specific error messages."
     exit 1
 else
     echo "🎉 ALL PACKAGES INSTALLED SUCCESSFULLY!"

@@ -1321,7 +1321,7 @@ USER root
 # GitHub Actions and Bitbucket Pipelines. Optimizations include:
 # - Aggressive build tools removal after R package installation
 # - Complete documentation cleanup (help files, PDFs, vignettes)
-# - Only Stan packages excluded (no CmdStan in CI image)
+# - Only Stan-dependent packages excluded (no CmdStan in CI image)
 # - Cache and temporary file cleanup
 # - Retains full geospatial capabilities (sf, terra, s2) for mapping
 # Target: ~700MB+ space savings from 4GB to ~3.3GB
@@ -1361,6 +1361,16 @@ RUN set -e; \
         libcurl4-openssl-dev \
         libssl-dev \
         libgit2-dev \
+        # Additional dependencies for pak and R packages
+        libfontconfig1-dev \
+        libcairo2-dev \
+        libxt-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        libfreetype6-dev \
+        libpng-dev \
+        libtiff5-dev \
+        libjpeg-dev \
         # Additional dependencies for specific R packages
         libgdal-dev \
         libproj-dev \
@@ -1435,21 +1445,61 @@ RUN set -e; \
     export R_LIBS_SITE="$SITE_LIB_DIR"; \
     export MAKEFLAGS="-j$(nproc)"; \
     export TMPDIR=/tmp/R-pkg-cache; \
+    mkdir -p "$TMPDIR"; \
     echo "R package installation environment configured"; \
-    # Install pak from CRAN
-    R -e "install.packages('pak', repos='https://cloud.r-project.org/', dependencies=TRUE)"; \
-    # Verify pak installation
-    R -e "if (!require('pak', quietly=TRUE)) { stop('pak installation failed') } else { cat('✅ pak installed successfully\n') }"
+    echo "R_VERSION: $R_VERSION"; \
+    echo "R_MAJOR_MINOR: $R_MAJOR_MINOR"; \
+    echo "SITE_LIB_DIR: $SITE_LIB_DIR"; \
+    echo "R_LIBS_SITE: $R_LIBS_SITE"; \
+    # Configure R to prefer binary packages on AMD64
+    R -e "cat('Platform info:\\n'); cat('OS:', R.Version()\$os, '\\n'); cat('Arch:', R.Version()\$arch, '\\n'); cat('Platform:', .Platform\$pkgType, '\\n'); options(repos = c(CRAN = 'https://cloud.r-project.org/', RSPM = 'https://packagemanager.rstudio.com/all/latest')); if (R.Version()\$arch == 'x86_64' && R.Version()\$os == 'linux-gnu') { options(pkgType = 'binary'); options(install.packages.compile.from.source = 'never'); cat('Configured to use binary packages on AMD64\\n'); } else { cat('Using default package type for', R.Version()\$arch, R.Version()\$os, '\\n'); }; cat('Package type:', getOption('pkgType'), '\\n'); cat('Repositories:\\n'); print(getOption('repos'));"; \
+    # Install pak using the official installation script (downloads pre-built binaries)
+    R -e " \
+        # Use the official pak installation method that downloads binaries
+        install.packages('pak', repos = sprintf( \
+            'https://r-lib.github.io/p/pak/stable/%s/%s/%s', \
+            .Platform\$pkgType, \
+            R.Version()\$os, \
+            R.Version()\$arch \
+        )); \
+    " || R -e " \
+        # Fallback: try the devel version if stable fails
+        install.packages('pak', repos = sprintf( \
+            'https://r-lib.github.io/p/pak/devel/%s/%s/%s', \
+            .Platform\$pkgType, \
+            R.Version()\$os, \
+            R.Version()\$arch \
+        )); \
+    " || R -e " \
+        # Final fallback: use the bootstrap script
+        source('https://r-lib.github.io/p/pak/stable/INSTALL'); \
+    "; \
+    # Verify pak installation and configure it for binary packages
+    R -e " \
+        if (!require('pak', quietly = FALSE)) { \
+            cat('pak package not found in library paths:\n'); \
+            print(.libPaths()); \
+            cat('Available packages:\n'); \
+            print(installed.packages()[,c('Package', 'LibPath')]); \
+            stop('pak installation failed'); \
+        } else { \
+            cat('pak installed successfully\n'); \
+            cat('pak version:', as.character(packageVersion('pak')), '\n'); \
+            # Configure pak to prefer binary packages
+            pak::pak_setup(); \
+            cat('pak configured for binary package preference\n'); \
+        } \
+    "
 
 # Copy and run R package installation script with aggressive optimization
 COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/R_packages.txt
 RUN set -e; \
     chmod +x /tmp/install_r_packages.sh && \
-    # SELECTIVE EXCLUSION: Only exclude Stan packages (no CmdStan in CI image)
+    # SELECTIVE EXCLUSION: Only exclude Stan-dependent packages (no CmdStan in CI image)
     grep -E '^(rstan|cmdstanr|rstanarm|brms|shinystan)$' /tmp/R_packages.txt > /tmp/excluded_packages.txt || true; \
     grep -vf /tmp/excluded_packages.txt /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
-    echo "Excluded packages (Stan only - no CmdStan in CI image):"; \
+    echo "Note: Excluding packages that depend on Stan (no CmdStan in CI image):"; \
     cat /tmp/excluded_packages.txt || echo "None"; \
     \
     # Set up environment for R package installation
@@ -1462,7 +1512,7 @@ RUN set -e; \
     mkdir -p "$TMPDIR"; \
     \
     # Install R packages
-    echo "Installing R packages (Stan packages excluded - no CmdStan in CI image)..."; \
+    echo "Installing R packages (excluding Stan-dependent packages - no CmdStan in CI image)..."; \
     /tmp/install_r_packages.sh --packages-file /tmp/R_packages.filtered.txt; \
     echo "✅ R package installation completed"; \
     \

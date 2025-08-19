@@ -182,8 +182,12 @@ if [ "$PARALLEL" = true ]; then
     # Build all combinations in parallel
     # Array to store background process IDs so we can wait for them
     pids=()
+    build_commands=()  # Track which build each PID corresponds to
     for target in "${TARGETS[@]}"; do
         for platform in "${PLATFORMS[@]}"; do
+            arch_suffix=$(get_arch_suffix "$platform")
+            image_tag="${target}-${arch_suffix}"
+            build_commands+=("$image_tag")
             # The & at the end runs this in the background
             build_single "$target" "$platform" &
             pids+=($!)  # Store the process ID
@@ -193,16 +197,21 @@ if [ "$PARALLEL" = true ]; then
     # Wait for all builds to complete
     # WHY WE WAIT: We need to know if any builds failed before continuing
     failed_builds=0
-    for pid in "${pids[@]}"; do
-        if ! wait "$pid"; then
+    failed_images=()
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
             ((failed_builds++))
+            failed_images+=("${build_commands[$i]}")
         fi
     done
     
     if [ $failed_builds -eq 0 ]; then
         print_success "🎉 All parallel builds completed successfully!"
     else
-        print_error "❌ $failed_builds build(s) failed"
+        print_error "❌ $failed_builds build(s) failed:"
+        for failed_image in "${failed_images[@]}"; do
+            print_error "   • $failed_image"
+        done
         exit 1
     fi
 else
@@ -214,18 +223,21 @@ else
     # Build all combinations sequentially
     failed_builds=0
     total_builds=0
+    failed_images=()  # Array to track which builds failed
     
     # Nested loops: for each target, build it for each platform
     for target in "${TARGETS[@]}"; do
         for platform in "${PLATFORMS[@]}"; do
             ((total_builds++))  # Count how many we've attempted
             arch_suffix=$(get_arch_suffix "$platform")
+            image_tag="${target}-${arch_suffix}"
             
             echo ""  # Blank line for readability
-            print_status "Building $total_builds of $((${#TARGETS[@]} * ${#PLATFORMS[@]})): ${target}-${arch_suffix}"
+            print_status "Building $total_builds of $((${#TARGETS[@]} * ${#PLATFORMS[@]})): ${image_tag}"
             
             if ! build_single "$target" "$platform"; then
                 ((failed_builds++))
+                failed_images+=("$image_tag")  # Track which image failed
                 print_error "Build failed, continuing with remaining builds..."
             fi
         done
@@ -235,7 +247,10 @@ else
     if [ $failed_builds -eq 0 ]; then
         print_success "🎉 All $total_builds builds completed successfully!"
     else
-        print_error "❌ $failed_builds out of $total_builds build(s) failed"
+        print_error "❌ $failed_builds out of $total_builds build(s) failed:"
+        for failed_image in "${failed_images[@]}"; do
+            print_error "   • $failed_image"
+        done
         exit 1
     fi
 fi
