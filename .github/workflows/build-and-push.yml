@@ -23,7 +23,8 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/base-container
 
 jobs:
-  build-and-push:
+  build-r-container:
+    # Phase 0: r-container build fits within standard GitHub hosted runner memory (~7 GB usable for Docker)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -39,8 +40,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate metadata
-        id: meta
+      - name: Generate metadata (r-container)
+        id: meta_r
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -58,14 +59,42 @@ jobs:
           target: r-container
           push: true
           tags: >-
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:r-${{
-            steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:r-${{ steps.meta_r.outputs.version }}
           cache-from: >-
-            type=registry,ref=${{ env.REGISTRY }}/${{
-            env.IMAGE_NAME }}:cache-r
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
           cache-to: >-
-            type=registry,ref=${{ env.REGISTRY }}/${{
-            env.IMAGE_NAME }}:cache-r,mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r,mode=max
+
+  build-full-container:
+    # Phase 0: full-container requires >=30 GB RAM for Docker build (large layers, LaTeX + tooling install)
+    # Assumption: a self-hosted runner labeled 'self-hosted, linux, x64, large' provides >=32 GB RAM.
+    # If such a runner is not yet configured, this job will queue indefinitely; configure runner before merging.
+    needs: build-r-container
+    runs-on: [self-hosted, linux, x64, large]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate metadata (full-container)
+        id: meta_full
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push full-container
         uses: docker/build-push-action@v5
@@ -74,13 +103,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           target: full-container
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta_full.outputs.tags }}
+          labels: ${{ steps.meta_full.outputs.labels }}
           cache-from: |
-            type=registry,ref=${{ env.REGISTRY }}/${{
-            env.IMAGE_NAME }}:cache-r
-            type=registry,ref=${{ env.REGISTRY }}/${{
-            env.IMAGE_NAME }}:cache-full
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full
           cache-to: >-
-            type=registry,ref=${{ env.REGISTRY }}/${{
-            env.IMAGE_NAME }}:cache-full,mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full,mode=max
