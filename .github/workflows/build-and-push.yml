@@ -1,6 +1,26 @@
 ---
 name: Build and Push Containers
 
+# Workflow Overview (Phase 1 Documentation)
+# This workflow builds and pushes two related container targets:
+#   1. r-container      -> Contains R runtime + packages (smaller, faster to build, <= ~8GB RAM requirement)
+#   2. full-container   -> Extends r-container with heavier toolchain (LaTeX, Pandoc, Neovim configs, etc.) and
+#                          requires a Docker daemon with >=30GB RAM due to large layer assembly.
+#
+# Key Design Decisions:
+# - Sequential builds: r-container first, then full-container to maximize layer reuse and reduce total build time.
+# - Registry caching: Uses type=registry cache to persist large layers beyond the limitations of GitHub Actions cache.
+# - Multi-architecture: Builds linux/amd64 and linux/arm64 without QEMU emulation (handled by Buildx on runners).
+# - Memory-aware scheduling (Phase 0): Standard hosted runner for r-container; self-hosted large-memory runner for full-container.
+# - Explicit tagging: Metadata action provides ref, PR, SHA, and 'latest' (only on default branch).
+#
+# Future Enhancements (Phase 5 – intentionally NOT implemented now, but documented for education):
+# - Security scanning (Trivy / Snyk)
+# - Release automation + semantic versioning
+# - Advanced deployment strategies / promotion pipelines
+# - Additional performance telemetry
+# These are described in a PR comment rather than implemented to avoid scope creep.
+
 "on":
   push:
     branches: [main]
