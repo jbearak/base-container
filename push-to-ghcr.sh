@@ -7,7 +7,7 @@
 # container images and makes them available to anyone (or just your team, if private).
 #
 # TWO DIFFERENT MODES:
-# 1. DEFAULT MODE: Push existing local images (built with build-all.sh or build-container.sh)
+# 1. DEFAULT MODE: Push existing local images (built with build.sh)
 #    - Uses the platform-specific images like "full-container-arm64"
 #    - Each image only works on its specific architecture
 #
@@ -154,36 +154,20 @@ check_local_image() {
     return 1  # Failure: image not found
 }
 
-# Function to build image if it doesn't exist locally
-# WHY THIS EXISTS: Sometimes you want to push an image but haven't built it yet.
-# The -b flag lets you build and push in one command.
 build_image() {
-    local target="$1"  # e.g., "full-container"
-    local tag="$2"     # e.g., "latest"
-    
-    print_status "Building image for target: $target"
-    
-    # Try to use the existing build script if available (preferred method)
-    if [[ -f "./build-container.sh" ]]; then
-        print_status "Using existing build script..."
+    local target="$1"
+    local tag="$2"
+    print_status "Building image for target: $target via unified build.sh"
+    if [[ -f ./build.sh ]]; then
         case "$target" in
-            "full-container")
-                ./build-container.sh --full-container
-                ;;
-            "r-container")
-                ./build-container.sh --r-container
-                ;;
-            *)
-                print_error "Unknown target for build script: $target"
-                return 1
-                ;;
+          full-container) ./build.sh full-container ;;
+          r-container)    ./build.sh r-container    ;;
+          *) print_error "Unknown target: $target"; return 1;;
         esac
     else
-        # Fallback: build directly with docker (less preferred)
-        print_status "Building directly with docker..."
-        docker build --target "$target" -t "${target}:${tag}" .
+        print_status "Fallback docker build (build.sh missing)"
+        docker build --target "$target" -t "${target}-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/')" .
     fi
-    
     print_success "Build completed for target: $target"
 }
 
@@ -351,7 +335,7 @@ if [[ "$ALL_PLATFORMS" == "true" ]]; then
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Building and pushing all targets (multi-platform)..."
         failed_builds=0
-        
+        VALID_TARGETS=("full-container" "r-container")
         for target in "${VALID_TARGETS[@]}"; do
             echo
             print_status "Processing target: $target (multi-platform)"

@@ -32,7 +32,7 @@
 #   • Better separation of concerns (each stage has a clear purpose)
 #   • Optimized for Docker layer caching - VS Code updates won't invalidate R packages
 #
-# Usage     : See build-container.sh for user-friendly build commands, or
+# Usage     : Use build.sh for user-friendly build commands, or build directly with:
 #             build directly with:
 #               docker build --target base -t base-container:base .
 #               docker build --target base-nvim -t base-container:base-nvim .
@@ -1368,6 +1368,7 @@ RUN groupmod -g 2020 dialout || true;     groupmod -g 20 staff || true;     set 
 # Ubuntu's default R version is often outdated. We add the official CRAN
 # repository to get the latest stable R version.
 # ---------------------------------------------------------------------------
+ARG R_BUILD_JOBS=2
 RUN set -e; \
     # Add CRAN GPG key
     curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | \
@@ -1440,7 +1441,7 @@ FFLAGS=-O3 -mtune=native
 FCFLAGS=-O3 -mtune=native
 
 # Use all available cores for compilation (adjust if needed)
-MAKEFLAGS=-j$(nproc)
+MAKEFLAGS=-j${R_BUILD_JOBS}
 EOF
 RUN chown -R me:me /home/me/.R && echo "✅ R compilation configuration applied"
 
@@ -1472,7 +1473,7 @@ RUN set -e; \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
     SITE_LIB_DIR="/usr/local/lib/R/site-library-${R_MAJOR_MINOR}"; \
     export R_LIBS_SITE="$SITE_LIB_DIR"; \
-    export MAKEFLAGS="-j$(nproc)"; \
+    export MAKEFLAGS="-j${R_BUILD_JOBS}"; \
     export TMPDIR=/tmp/R-pkg-cache; \
     mkdir -p "$TMPDIR"; \
     echo "R package installation environment configured"; \
@@ -1530,7 +1531,7 @@ RUN set -e; \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
     SITE_LIB_DIR="/usr/local/lib/R/site-library-${R_MAJOR_MINOR}"; \
     export R_LIBS_SITE="$SITE_LIB_DIR"; \
-    export MAKEFLAGS="-j$(nproc)"; \
+    export MAKEFLAGS="-j${R_BUILD_JOBS}"; \
     export TMPDIR=/tmp/R-pkg-cache; \
     mkdir -p "$TMPDIR"; \
     \

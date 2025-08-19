@@ -2,7 +2,7 @@
 # parse-docker-error.sh - Make Docker build errors human-readable
 #
 # Usage: 
-#   ./build-amd64.sh 2>&1 | ./parse-docker-error.sh
+#   ./build.sh full-container 2>&1 | ./parse-docker-error.sh
 #   or
 #   ./parse-docker-error.sh < error.log
 
