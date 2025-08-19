@@ -91,7 +91,8 @@ if [ "$TARGET" = "full-container" ]; then
   if [ -r /proc/meminfo ]; then
     TOTAL_RAM_KB=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
     TOTAL_RAM_GB=$((TOTAL_RAM_KB / 1024 / 1024))
-    if [ "$TOTAL_RAM_GB" -lt 32 ]; then
+    # Use 30GB threshold to account for integer truncation (31.3GB → 31GB)
+    if [ "$TOTAL_RAM_GB" -lt 30 ]; then
       err "full-container requires ≥32GB RAM (detected: ${TOTAL_RAM_GB}GB). Use r-container instead or add swap."
       err "Override with IGNORE_RAM_CHECK=1 if you have sufficient swap configured."
       if [ "${IGNORE_RAM_CHECK:-0}" != "1" ]; then
