@@ -82,7 +82,7 @@ case "$HOST_ARCH_RAW" in
   x86_64) HOST_ARCH=amd64;;
   aarch64|arm64) HOST_ARCH=arm64;;
   *) err "Unsupported host arch: $HOST_ARCH_RAW"; exit 4;;
-endsac || true
+esac || true
 
 # Determine build platform
 if $FORCE_AMD64; then
