@@ -71,6 +71,65 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
 
 1. **Create `.devcontainer/devcontainer.json` in your project:**
 
+  ### Advanced AMD64 Build Script (`build-amd64.sh`) Enhancements
+
+  Recent changes added resilience and alternative export strategies for very large images that previously failed during the final `--load` (image streaming) phase inside docker-in-docker (EOF crashes). Key features:
+
+  1. Strict safety flags: `set -euo pipefail`.
+  2. Retry loop: `MAX_RETRIES` and `SLEEP_BETWEEN` environment variables to automatically retry failed buildx `--load` attempts.
+  3. Native fast path: When host arch is already `amd64` and `IMAGE_OUTPUT=load`, a classic `docker build` is attempted first (more stable than buildx streaming). Disable with `NATIVE_FAST_PATH=0` or force buildx with `FORCE_BUILDX=1`.
+  4. Persistent local buildx cache: `BUILDX_CACHE_DIR` (default `.buildx-cache`) used via `--cache-from/--cache-to` to speed subsequent attempts and survive daemon restarts.
+  5. Multiple output modes (set `IMAGE_OUTPUT`, default `oci`):
+    - `oci`: Write OCI image layout `<target>-amd64.oci` (no daemon streaming).
+    - `tar`: Write legacy docker archive `<target>-amd64.tar` (not auto-loaded).
+    - `push`: Push directly to registry (requires `PUSH_TAG`).
+    - `none`: Build only for cache validation, no exported artifact.
+    - `load`: Legacy behavior; stream into local daemon (least stable for huge images).
+  6. Tar fallback: If buildx `--load` retries exhaust, a final archived export is attempted (`--output type=docker,dest=...`).
+  7. Local registry fallback: If tar export fails and `ENABLE_REGISTRY_FALLBACK=1`, launches a disposable local registry (`localhost:5000`) and re-runs build with `--push`, then pulls and retags locally.
+  8. Automatic daemon restarts: Helper detects unavailable Docker daemon and attempts restart (Codespaces / docker-in-docker environments).
+
+  Example usages:
+
+  ```bash
+  # Fast path (only if you truly need local docker run):
+  IMAGE_OUTPUT=load ./build-amd64.sh full-container
+
+  # Preferred (avoid streaming): produce OCI layout directory
+  IMAGE_OUTPUT=oci ./build-amd64.sh full-container
+
+  # Create a tar archive without loading
+  IMAGE_OUTPUT=tar ./build-amd64.sh full-container
+
+  # Push directly to GHCR (avoids local load entirely)
+  IMAGE_OUTPUT=push PUSH_TAG=ghcr.io/youruser/base-container:amd64-dev ./build-amd64.sh full-container
+
+  # Validate build layers only (no artifact)
+  IMAGE_OUTPUT=none ./build-amd64.sh full-container
+
+  # Increase retries
+  MAX_RETRIES=4 SLEEP_BETWEEN=10 IMAGE_OUTPUT=oci ./build-amd64.sh full-container
+  ```
+
+  Environment variables summary:
+
+  | Variable | Purpose | Default |
+  |----------|---------|---------|
+  | `IMAGE_OUTPUT` | Export mode (`oci|tar|push|none|load`) | `oci` |
+  | `PUSH_TAG` | Registry tag when `IMAGE_OUTPUT=push` | (empty) |
+  | `MAX_RETRIES` | Number of retries for streaming / selected output | `2` |
+  | `SLEEP_BETWEEN` | Seconds between retries | `5` |
+  | `BUILDX_CACHE_DIR` | Local buildx cache dir | `.buildx-cache` |
+  | `ENABLE_REGISTRY_FALLBACK` | Enable local registry fallback after tar fail | `1` |
+  | `NATIVE_FAST_PATH` | Allow classic `docker build` when arch matches | `1` |
+  | `FORCE_BUILDX` | Force buildx even if native fast path eligible | `0` |
+
+  Troubleshooting tips:
+  * Prefer `IMAGE_OUTPUT=oci` or `push` to avoid daemon crashes caused by large `--load` transfers.
+  * If the daemon keeps exiting: check disk (`docker system df`) and consider lowering concurrency or splitting targets.
+  * `--load` should only be used if you must `docker run` the image locally immediately.
+
+
 ```jsonc
 {
   "name": "Base Container Development Environment",
