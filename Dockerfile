@@ -532,12 +532,12 @@ RUN chown -R me:me /home/me
 # Copy files from the dotfiles directory into the image. These provide
 # sensible defaults but can be overridden by mounting or copying the
 # user's actual dotfiles when running the container.
+# Note: Neovim config removed - users can set up their own plugins and configuration
 # ---------------------------------------------------------------------------
 COPY dotfiles/tmux.conf /home/me/.tmux.conf
 COPY dotfiles/Rprofile /home/me/.Rprofile
 COPY dotfiles/lintr /home/me/.lintr
 RUN mkdir -p /home/me/.config
-COPY dotfiles/config/nvim/ /home/me/.config/nvim/
 # ---------------------------------------------------------------------------
 # Set file ownership for all copied files
 # ---------------------------------------------------------------------------
@@ -1225,10 +1225,16 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     export R_COMPILE_PKGS=1; \
     export R_KEEP_PKG_SOURCE=yes; \
     export TMPDIR=/tmp/R-pkg-cache; \
+    # Set up exclusions based on architecture and container type
+    EXCLUDE_LIST=""; \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+        EXCLUDE_LIST="btw httpgd colorout"; \
+        echo "Note: Excluding btw, httpgd, colorout packages for AMD64 build"; \
+    fi; \
     if [ "$DEBUG_PACKAGES" = "true" ]; then \
-        /tmp/install_r_packages.sh --debug; \
+        /tmp/install_r_packages.sh --debug --exclude-packages "$EXCLUDE_LIST"; \
     else \
-        /tmp/install_r_packages.sh; \
+        /tmp/install_r_packages.sh --exclude-packages "$EXCLUDE_LIST"; \
     fi
 
 # ---------------------------------------------------------------------------
@@ -1482,12 +1488,6 @@ COPY install_r_packages.sh /tmp/install_r_packages.sh
 COPY R_packages.txt /tmp/R_packages.txt
 RUN set -e; \
     chmod +x /tmp/install_r_packages.sh && \
-    # SELECTIVE EXCLUSION: Only exclude Stan-dependent packages (no CmdStan in CI image)
-    grep -E '^(rstan|cmdstanr|rstanarm|brms|shinystan)$' /tmp/R_packages.txt > /tmp/excluded_packages.txt || true; \
-    grep -vf /tmp/excluded_packages.txt /tmp/R_packages.txt > /tmp/R_packages.filtered.txt; \
-    echo "Note: Excluding packages that depend on Stan (no CmdStan in CI image):"; \
-    cat /tmp/excluded_packages.txt || echo "None"; \
-    \
     # Set up environment for R package installation
     R_VERSION=$(R --version | head -n1 | sed "s/R version \([0-9.]*\).*/\1/"); \
     R_MAJOR_MINOR=$(echo "$R_VERSION" | cut -d. -f1-2); \
@@ -1497,9 +1497,10 @@ RUN set -e; \
     export TMPDIR=/tmp/R-pkg-cache; \
     mkdir -p "$TMPDIR"; \
     \
-    # Install R packages
-    echo "Installing R packages (excluding Stan-dependent packages - no CmdStan in CI image)..."; \
-    /tmp/install_r_packages.sh --packages-file /tmp/R_packages.filtered.txt; \
+    # Install R packages with unified exclusion system
+    # Exclude Stan packages (no CmdStan in CI image) and GitHub packages for r-container
+    echo "Installing R packages with exclusions for r-container (CI-focused image)..."; \
+    /tmp/install_r_packages.sh --packages-file /tmp/R_packages.txt --exclude-packages "rstan cmdstanr rstanarm brms shinystan btw httpgd colorout"; \
     echo "✅ R package installation completed"; \
     \
     # AGGRESSIVE BUILD TOOLS REMOVAL (major space savings)
@@ -1565,8 +1566,6 @@ RUN set -e; \
         /tmp/R-pkg-cache \
         /tmp/install_r_packages.sh \
         /tmp/R_packages.txt \
-        /tmp/R_packages.filtered.txt \
-        /tmp/excluded_packages.txt \
         /root/.cache \
         /home/me/.cache \
         /var/cache/apt/* \

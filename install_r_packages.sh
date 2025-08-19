@@ -10,6 +10,7 @@
 # Configuration
 PACKAGES_FILE="/tmp/packages.txt"
 DEBUG_MODE=false
+EXCLUDE_PACKAGES=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -22,9 +23,13 @@ while [[ $# -gt 0 ]]; do
             PACKAGES_FILE="$2"
             shift 2
             ;;
+        --exclude-packages)
+            EXCLUDE_PACKAGES="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--debug] [--packages-file FILE]"
+            echo "Usage: $0 [--debug] [--packages-file FILE] [--exclude-packages 'pkg1 pkg2 pkg3']"
             exit 1
             ;;
     esac
@@ -47,7 +52,24 @@ fi
 
 echo "📦 Installing $total_packages R packages using pak..."
 echo "🕒 Start time: $(date)"
+if [[ -n "$EXCLUDE_PACKAGES" ]]; then
+    echo "⏭️  Excluding packages: $EXCLUDE_PACKAGES"
+fi
 echo
+
+# Function to check if a package should be excluded
+is_package_excluded() {
+    local package="$1"
+    if [[ -n "$EXCLUDE_PACKAGES" ]]; then
+        # Check if package is in the exclusion list (space-separated)
+        for excluded_pkg in $EXCLUDE_PACKAGES; do
+            if [[ "$package" == "$excluded_pkg" ]]; then
+                return 0  # Package is excluded
+            fi
+        done
+    fi
+    return 1  # Package is not excluded
+}
 
 start_time=$(date +%s)
 installed_count=0
@@ -292,112 +314,128 @@ else
     fi
 fi
 
-# Install httpgd from GitHub using pak
-echo -n "🌐 Installing httpgd from GitHub with pak... "
-httpgd_command="
-library(pak)
-cat('📦 Building httpgd...\\n')
-flush.console()
-tryCatch({
-    start_time <- Sys.time()
-    pak::pkg_install('nx10/httpgd')
-    end_time <- Sys.time()
-    duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
-    cat('✅ Built httpgd in', duration, 'seconds\\n')
-    cat('SUCCESS\\n')
-}, error = function(e) {
-    cat('ERROR:', conditionMessage(e), '\\n')
-    quit(status = 1)
-})
-"
+# Install httpgd from GitHub using pak (skip if excluded)
+if ! is_package_excluded "httpgd"; then
+    echo -n "🌐 Installing httpgd from GitHub with pak... "
+    httpgd_command="
+    library(pak)
+    cat('📦 Building httpgd...\\n')
+    flush.console()
+    tryCatch({
+        start_time <- Sys.time()
+        pak::pkg_install('nx10/httpgd')
+        end_time <- Sys.time()
+        duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
+        cat('✅ Built httpgd in', duration, 'seconds\\n')
+        cat('SUCCESS\\n')
+    }, error = function(e) {
+        cat('ERROR:', conditionMessage(e), '\\n')
+        quit(status = 1)
+    })
+    "
 
-if [[ "$DEBUG_MODE" == "true" ]]; then
-    if echo "$httpgd_command" | R --slave --no-restore; then
-        echo "✅"
-        ((installed_count++))
+    if [[ "$DEBUG_MODE" == "true" ]]; then
+        if echo "$httpgd_command" | R --slave --no-restore; then
+            echo "✅"
+            ((installed_count++))
+        else
+            echo "❌"
+            failed_packages+=("httpgd")
+        fi
     else
-        echo "❌"
-        failed_packages+=("httpgd")
+        if echo "$httpgd_command" | R --slave --no-restore >/dev/null 2>&1; then
+            echo "✅"
+            ((installed_count++))
+        else
+            echo "❌"
+            failed_packages+=("httpgd")
+        fi
     fi
 else
-    if echo "$httpgd_command" | R --slave --no-restore >/dev/null 2>&1; then
-        echo "✅"
-        ((installed_count++))
-    else
-        echo "❌"
-        failed_packages+=("httpgd")
-    fi
+    echo "⏭️  Skipping httpgd (excluded)"
 fi
 
-# Install colorout from GitHub using pak
-echo -n "🎨 Installing colorout from GitHub with pak... "
-colorout_command="
-library(pak)
-cat('📦 Building colorout...\\n')
-flush.console()
-tryCatch({
-    start_time <- Sys.time()
-    pak::pkg_install('jalvesaq/colorout')
-    end_time <- Sys.time()
-    duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
-    cat('✅ Built colorout in', duration, 'seconds\\n')
-    cat('SUCCESS\\n')
-}, error = function(e) {
-    cat('ERROR:', conditionMessage(e), '\\n')
-    quit(status = 1)
-})
-"
+# Install colorout from GitHub using pak (skip if excluded)
+if ! is_package_excluded "colorout"; then
+    echo -n "🎨 Installing colorout from GitHub with pak... "
+    colorout_command="
+    library(pak)
+    cat('📦 Building colorout...\\n')
+    flush.console()
+    tryCatch({
+        start_time <- Sys.time()
+        pak::pkg_install('jalvesaq/colorout')
+        end_time <- Sys.time()
+        duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
+        cat('✅ Built colorout in', duration, 'seconds\\n')
+        cat('SUCCESS\\n')
+    }, error = function(e) {
+        cat('ERROR:', conditionMessage(e), '\\n')
+        quit(status = 1)
+    })
+    "
 
-if [[ "$DEBUG_MODE" == "true" ]]; then
-    if echo "$colorout_command" | R --slave --no-restore; then
-        echo "✅"
-        ((installed_count++))
+    if [[ "$DEBUG_MODE" == "true" ]]; then
+        if echo "$colorout_command" | R --slave --no-restore; then
+            echo "✅"
+            ((installed_count++))
+        else
+            echo "❌"
+            failed_packages+=("colorout")
+        fi
     else
-        echo "❌"
-        failed_packages+=("colorout")
+        if echo "$colorout_command" | R --slave --no-restore >/dev/null 2>&1; then
+            echo "✅"
+            ((installed_count++))
+        else
+            echo "❌"
+            failed_packages+=("colorout")
+        fi
     fi
 else
-    if echo "$colorout_command" | R --slave --no-restore >/dev/null 2>&1; then
-        echo "✅"
-        ((installed_count++))
-    else
-        echo "❌"
-        failed_packages+=("colorout")
-    fi
+    echo "⏭️  Skipping colorout (excluded)"
 fi
 
-# Install btw from GitHub using pak
-echo -n "📊 Installing btw from GitHub with pak... "
-btw_command="
-library(pak)
-cat('📦 Building btw...\\n')
-flush.console()
-tryCatch({
-    start_time <- Sys.time()
-    pak::pkg_install('posit-dev/btw')
-    end_time <- Sys.time()
-    duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
-    cat('✅ Built btw in', duration, 'seconds\\n')
-    cat('SUCCESS\\n')
-}, error = function(e) {
-    cat('ERROR:', conditionMessage(e), '\\n')
-    quit(status = 1)
-})
-"
+# Install btw from GitHub using pak (skip if excluded)
+if ! is_package_excluded "btw"; then
+    echo -n "📊 Installing btw from GitHub with pak... "
+    btw_command="
+    library(pak)
+    cat('📦 Building btw...\\n')
+    flush.console()
+    tryCatch({
+        start_time <- Sys.time()
+        pak::pkg_install('posit-dev/btw')
+        end_time <- Sys.time()
+        duration <- round(as.numeric(difftime(end_time, start_time, units = 'secs')), 1)
+        cat('✅ Built btw in', duration, 'seconds\\n')
+        cat('SUCCESS\\n')
+    }, error = function(e) {
+        cat('ERROR:', conditionMessage(e), '\\n')
+        quit(status = 1)
+    })
+    "
 
-if [[ "$DEBUG_MODE" == "true" ]]; then
-    if echo "$btw_command" | R --slave --no-restore; then
-        echo "✅"
-        ((installed_count++))
+    if [[ "$DEBUG_MODE" == "true" ]]; then
+        if echo "$btw_command" | R --slave --no-restore; then
+            echo "✅"
+            ((installed_count++))
+        else
+            echo "❌"
+            failed_packages+=("btw")
+        fi
     else
-        echo "❌"
-        failed_packages+=("btw")
+        if echo "$btw_command" | R --slave --no-restore >/dev/null 2>&1; then
+            echo "✅"
+            ((installed_count++))
+        else
+            echo "❌"
+            failed_packages+=("btw")
+        fi
     fi
 else
-    if echo "$btw_command" | R --slave --no-restore >/dev/null 2>&1; then
-        echo "✅"
-        ((installed_count++))
-    else
+    echo "⏭️  Skipping btw (excluded)"
+fi
         echo "❌"
         failed_packages+=("btw")
     fi
