@@ -1225,17 +1225,7 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     export R_COMPILE_PKGS=1; \
     export R_KEEP_PKG_SOURCE=yes; \
     export TMPDIR=/tmp/R-pkg-cache; \
-    # Set up exclusions based on architecture and container type
-    EXCLUDE_LIST=""; \
-    if [ "$TARGETARCH" = "amd64" ]; then \
-        EXCLUDE_LIST="btw httpgd colorout"; \
-        echo "Note: Excluding btw, httpgd, colorout packages for AMD64 build"; \
-    fi; \
-    if [ "$DEBUG_PACKAGES" = "true" ]; then \
-        /tmp/install_r_packages.sh --debug --exclude-packages "$EXCLUDE_LIST"; \
-    else \
-        /tmp/install_r_packages.sh --exclude-packages "$EXCLUDE_LIST"; \
-    fi
+    /tmp/install_r_packages.sh
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
