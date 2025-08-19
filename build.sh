@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
-# Unified build script (best-practice simplified approach)
-# Purpose: Single entry-point to build either target (full-container | r-container)
-#          for host architecture (default) or explicitly for amd64 via --amd64.
-# Philosophy:
-#   * Keep local developer workflow simple: one script, obvious flags.
-#   * Avoid buildx unless cross-arch output is explicitly requested.
-#   * Provide predictable image naming: <target>-<arch> locally.
-#   * Leave multi-platform manifest creation to push script (buildx there).
+# Unified build script with daemonless fallback
+# Purpose: Build targets (full-container | r-container) for host or amd64.
+# Features:
+#   * Uses classic docker / buildx when daemon available.
+#   * Falls back to rootless BuildKit (buildctl) when daemon absent AND output mode
+#     does not require loading into local daemon.
+#   * Output modes: load (default), oci (OCI layout dir), tar (docker save archive).
+#   * Adds --output flag to select mode; load requires a running docker daemon.
+#   * Multi-platform manifest creation remains responsibility of push-to-ghcr.sh.
 #
-# Usage:
-#   ./build.sh full-container          # build host arch full-container
-#   ./build.sh r-container             # build host arch r-container
-#   ./build.sh --amd64 full-container  # force build for linux/amd64 (requires buildx on non-amd64 hosts)
-#   ./build.sh --no-cache full-container
-#   R_BUILD_JOBS=4 ./build.sh full-container
-#   EXPORT_TAR=1 ./build.sh r-container
+# Usage examples:
+#   ./build.sh r-container                 # host arch, load into daemon (if running)
+#   ./build.sh --amd64 r-container         # cross-build (load if daemon; else advise)
+#   ./build.sh --output oci r-container    # produce r-container-<arch>.oci (no daemon needed)
+#   ./build.sh --output tar r-container    # produce r-container-<arch>.tar (no daemon needed)
+#   R_BUILD_JOBS=4 ./build.sh --output oci --amd64 r-container
+#   ./build.sh --no-cache --debug full-container
 #
 # Environment:
-#   R_BUILD_JOBS   Limit parallel R package compilation (passed as build-arg, default 2)
-#   EXPORT_TAR=1   After build, export docker save tarball <image>.tar
-#   TAG_SUFFIX     Append suffix to local tag (e.g. -dev)
+#   R_BUILD_JOBS (default 2)  Parallel R package compile jobs.
+#   EXPORT_TAR=1              (deprecated) still respected; equivalent to --output tar.
+#   TAG_SUFFIX                Extra suffix for local tag (e.g. -dev).
 #
 set -euo pipefail
 
@@ -30,26 +31,27 @@ err(){ echo -e "${RED}[ERR]${NC} $*" >&2; }
 succ(){ echo -e "${GREEN}[OK]${NC} $*"; }
 
 usage(){ cat <<EOF
-Unified build script
+Unified build script (docker + rootless buildctl fallback)
 
-Usage: $0 [--amd64] [--no-cache] [--debug] <full-container|r-container>
+Usage: $0 [--amd64] [--no-cache] [--debug] [--output load|oci|tar] <full-container|r-container>
 
 Options:
-  --amd64        Build linux/amd64 image (even on arm64 host). Uses buildx if host != amd64.
-  --no-cache     Disable Docker build cache.
-  --debug        Pass DEBUG_PACKAGES=true (verbose R package logs) to Dockerfile.
-  -h, --help     Show this help.
+  --amd64              Build linux/amd64 (uses buildx or buildctl if cross-arch).
+  --no-cache           Disable Docker build cache.
+  --debug              Pass DEBUG_PACKAGES=true (verbose R package logs) to Dockerfile.
+  --output <mode>      load (default), oci (directory), tar (docker archive). Load requires daemon.
+  -h, --help           Show help.
 
 Environment:
   R_BUILD_JOBS (default 2)  Parallel R package compile jobs.
-  EXPORT_TAR=1              Export image tar after build.
   TAG_SUFFIX                Extra suffix for local tag (e.g. -dev).
+  EXPORT_TAR=1              Deprecated shortcut for --output tar.
 
 Examples:
   ./build.sh full-container
-  ./build.sh --amd64 r-container
-  R_BUILD_JOBS=6 ./build.sh full-container
-  EXPORT_TAR=1 TAG_SUFFIX=-test ./build.sh r-container
+  ./build.sh --output oci r-container
+  ./build.sh --amd64 --output tar r-container
+  R_BUILD_JOBS=6 ./build.sh --debug --output oci full-container
 EOF
 }
 
@@ -57,13 +59,15 @@ EOF
 FORCE_AMD64=false
 NO_CACHE=false
 DEBUG_PACKAGES=false
+OUTPUT_MODE=load
 TARGET=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --amd64) FORCE_AMD64=true; shift;;
-    --no-cache) NO_CACHE=true; shift;;
-    --debug) DEBUG_PACKAGES=true; shift;;
+  --amd64) FORCE_AMD64=true; shift;;
+  --no-cache) NO_CACHE=true; shift;;
+  --debug) DEBUG_PACKAGES=true; shift;;
+  --output) OUTPUT_MODE="$2"; shift 2;;
     -h|--help) usage; exit 0;;
     full-container|r-container) TARGET="$1"; shift;;
     *) err "Unknown argument: $1"; usage; exit 1;;
@@ -74,15 +78,39 @@ if [ -z "$TARGET" ]; then
   usage; err "Target required"; exit 1
 fi
 
-if ! command -v docker >/dev/null 2>&1; then err "docker CLI not found"; exit 2; fi
-if ! docker info >/dev/null 2>&1; then err "Docker daemon unreachable"; exit 3; fi
+if [ "${EXPORT_TAR:-0}" = "1" ] && [ "$OUTPUT_MODE" = load ]; then
+  OUTPUT_MODE=tar
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  warn "docker CLI not found in PATH; will attempt rootless buildctl path (requires buildctl)."
+fi
+
+DOCKER_DAEMON_UP=true
+if command -v docker >/dev/null 2>&1; then
+  if ! docker info >/dev/null 2>&1; then
+    DOCKER_DAEMON_UP=false
+    warn "Docker daemon not reachable."
+  fi
+else
+  DOCKER_DAEMON_UP=false
+fi
+
+case "$OUTPUT_MODE" in
+  load|oci|tar) :;;
+  *) err "Invalid --output '$OUTPUT_MODE' (expected load|oci|tar)"; exit 1;;
+esac
+
+if [ "$OUTPUT_MODE" = load ] && ! $DOCKER_DAEMON_UP; then
+  err "--output load requires a running docker daemon. Use --output oci or --output tar instead."; exit 3
+fi
 
 HOST_ARCH_RAW="$(uname -m)"
 case "$HOST_ARCH_RAW" in
   x86_64) HOST_ARCH=amd64;;
   aarch64|arm64) HOST_ARCH=arm64;;
   *) err "Unsupported host arch: $HOST_ARCH_RAW"; exit 4;;
-endsac || true
+esac
 
 # Determine build platform
 if $FORCE_AMD64; then
@@ -97,8 +125,8 @@ if [ "$BUILD_PLATFORM" = "linux/amd64" ] && [ "$HOST_ARCH" != "amd64" ]; then
   NEED_BUILDX=true
 fi
 
-if $NEED_BUILDX && ! docker buildx version >/dev/null 2>&1; then
-  err "buildx required for cross-building to amd64 from $HOST_ARCH. Install Docker buildx."; exit 5
+if $NEED_BUILDX && $DOCKER_DAEMON_UP && ! docker buildx version >/dev/null 2>&1; then
+  err "buildx required for cross-building to amd64 from $HOST_ARCH. Install Docker buildx or use --output oci with buildctl."; exit 5
 fi
 
 R_BUILD_JOBS="${R_BUILD_JOBS:-2}"
@@ -110,26 +138,81 @@ BUILD_ARGS=( --target "$TARGET" --build-arg R_BUILD_JOBS="$R_BUILD_JOBS" )
 $DEBUG_PACKAGES && BUILD_ARGS+=( --build-arg DEBUG_PACKAGES=true ) || true
 $NO_CACHE && BUILD_ARGS+=( --no-cache ) || true
 
-info "Building target=$TARGET platform=$BUILD_PLATFORM tag=$IMAGE_TAG (R_BUILD_JOBS=$R_BUILD_JOBS)"
+info "Building target=$TARGET platform=$BUILD_PLATFORM tag=$IMAGE_TAG (R_BUILD_JOBS=$R_BUILD_JOBS output=$OUTPUT_MODE)"
 
-if $NEED_BUILDX; then
-  info "Using buildx for cross-arch build"
-  time docker buildx build --platform "$BUILD_PLATFORM" "${BUILD_ARGS[@]}" --load -t "$IMAGE_TAG" .
+if $DOCKER_DAEMON_UP && [ "$OUTPUT_MODE" = load ]; then
+  if $NEED_BUILDX; then
+    info "Using docker buildx (load)"
+    time docker buildx build --platform "$BUILD_PLATFORM" "${BUILD_ARGS[@]}" --load -t "$IMAGE_TAG" .
+  else
+    time docker build "${BUILD_ARGS[@]}" -t "$IMAGE_TAG" .
+  fi
+  succ "Built $IMAGE_TAG (loaded into daemon)"
 else
-  time docker build "${BUILD_ARGS[@]}" -t "$IMAGE_TAG" .
+  # Non-load outputs or daemonless path
+  if $DOCKER_DAEMON_UP && [ "$OUTPUT_MODE" != load ]; then
+    # Use docker buildx --output to artifact
+    case "$OUTPUT_MODE" in
+      oci) OUT_DEST="${IMAGE_TAG}.oci"; OUT_SPEC="type=oci,dest=${OUT_DEST}";;
+      tar) OUT_DEST="${IMAGE_TAG}.tar"; OUT_SPEC="type=docker,dest=${OUT_DEST}";;
+    esac
+    if $NEED_BUILDX; then
+      info "Using buildx (artifact export $OUTPUT_MODE)"
+      time docker buildx build --platform "$BUILD_PLATFORM" "${BUILD_ARGS[@]}" --output "$OUT_SPEC" -t "$IMAGE_TAG" .
+    else
+      # docker build cannot directly export oci/tar unless using buildx; fall back to buildx even if not cross
+      if docker buildx version >/dev/null 2>&1; then
+        info "Using buildx (artifact export $OUTPUT_MODE)"
+        time docker buildx build --platform "$BUILD_PLATFORM" "${BUILD_ARGS[@]}" --output "$OUT_SPEC" -t "$IMAGE_TAG" .
+      else
+        warn "buildx not available; attempting rootless buildctl"
+        DOCKER_DAEMON_UP=false
+      fi
+    fi
+    if [ -f "$OUT_DEST" ]; then succ "Exported $OUT_DEST"; fi
+  fi
+  if ! $DOCKER_DAEMON_UP; then
+    # Rootless buildctl path
+    if ! command -v buildctl >/dev/null 2>&1; then
+      warn "buildctl not found; attempting installation (apt)."
+      if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update -qq && sudo apt-get install -y -qq buildkit || true
+      fi
+    fi
+    if ! command -v buildctl >/dev/null 2>&1; then
+      err "buildctl unavailable. Cannot proceed without docker daemon. Install buildkit or start Docker."; exit 6
+    fi
+    case "$OUTPUT_MODE" in
+      oci) OUT_DEST="${IMAGE_TAG}.oci"; OUT_SPEC="type=oci,dest=${OUT_DEST}";;
+      tar) OUT_DEST="${IMAGE_TAG}.tar"; OUT_SPEC="type=docker,dest=${OUT_DEST}";;
+      load) err "Internal error: load mode should not reach buildctl path"; exit 7;;
+    esac
+    info "Using rootless buildctl (output=$OUTPUT_MODE)"
+    FRONTEND_OPTS=( --opt target="$TARGET" --opt platform="$BUILD_PLATFORM" )
+    FRONTEND_OPTS+=( --opt build-arg:R_BUILD_JOBS="$R_BUILD_JOBS" )
+    $DEBUG_PACKAGES && FRONTEND_OPTS+=( --opt build-arg:DEBUG_PACKAGES=true ) || true
+    $NO_CACHE && FRONTEND_OPTS+=( --no-cache ) || true
+    time buildctl build \
+      --frontend=dockerfile.v0 \
+      --local context=. \
+      --local dockerfile=. \
+      "${FRONTEND_OPTS[@]}" \
+      --output "$OUT_SPEC"
+    if [ -f "$OUT_DEST" ]; then succ "Exported $OUT_DEST"; else err "Expected artifact $OUT_DEST not found"; exit 8; fi
+  fi
 fi
 
-succ "Built $IMAGE_TAG"
-
-if [ "${EXPORT_TAR:-0}" = "1" ]; then
-  TAR_NAME="${IMAGE_TAG}.tar"
-  info "Exporting $TAR_NAME"
-  docker save "$IMAGE_TAG" -o "$TAR_NAME"
-  succ "Exported $TAR_NAME"
-fi
+# When output was oci/tar, image not loaded. Provide guidance; when load we already have tag.
+if [ "$OUTPUT_MODE" != load ]; then
+  echo "Artifact created: ${OUT_DEST}"; fi
 
 echo
-succ "Quick test suggestion: docker run --rm $IMAGE_TAG uname -m"
-[ "$TARGET" = "r-container" ] && echo "Run R: docker run --rm $IMAGE_TAG R -q -e 'sessionInfo()'" || true
-echo "Push (single-arch): docker tag $IMAGE_TAG ghcr.io/OWNER/base-container:${TARGET#full-container} && docker push ghcr.io/OWNER/base-container:..."
+if [ "$OUTPUT_MODE" = load ]; then
+  succ "Quick test: docker run --rm $IMAGE_TAG uname -m"
+  [ "$TARGET" = "r-container" ] && echo "Run R: docker run --rm $IMAGE_TAG R -q -e 'sessionInfo()'" || true
+  echo "Push (single-arch): docker tag $IMAGE_TAG ghcr.io/OWNER/base-container:${TARGET#full-container} && docker push ghcr.io/OWNER/base-container:..."
+else
+  succ "Image not loaded (output=$OUTPUT_MODE). Use buildx to load if needed: docker load -i ${OUT_DEST} (tar only)"
+  [ "$OUTPUT_MODE" = tar ] && echo "Load later: docker load -i ${OUT_DEST}" || true
+fi
 echo "For multi-arch distribution use: ./push-to-ghcr.sh -a"
