@@ -108,7 +108,7 @@ jobs:
     # Assumption: a self-hosted runner labeled 'self-hosted, linux, x64, large' provides >=32 GB RAM.
     # If such a runner is not yet configured, this job will queue indefinitely; configure runner before merging.
     needs: build-r-container
-    runs-on: [self-hosted, linux, x64, large]
+    runs-on: ${{ fromJson(vars.LARGE_RUNNER_LABELS) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
