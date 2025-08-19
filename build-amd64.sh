@@ -13,7 +13,11 @@
 #
 # NOTE: Cross-compilation is slower than native builds, but it works reliably.
 
-set -e  # Exit if any command fails
+set -euo pipefail  # Stricter safety
+
+# Retry configuration (helps with transient Docker EOF/export failures)
+MAX_RETRIES="${MAX_RETRIES:-2}"   # Number of build attempts
+SLEEP_BETWEEN="${SLEEP_BETWEEN:-5}" # Seconds to wait before retry
 
 # Configuration
 PLATFORM="linux/amd64"           # Target Intel/AMD 64-bit architecture
@@ -35,26 +39,283 @@ esac
 
 IMAGE_TAG="${TARGET}-amd64"      # Name the image to show its architecture
 
-echo "🏗️  Building ${TARGET} for ${PLATFORM}..."
+# Buildx cache directory (persists layers across daemon crashes / retries)
+BUILDX_CACHE_DIR="${BUILDX_CACHE_DIR:-.buildx-cache}"
+mkdir -p "${BUILDX_CACHE_DIR}" || true
 
-# Build with specific platform and environment variables to help with emulation
-# WHY THESE FLAGS:
-# --platform: Forces Docker to build for Intel/AMD even on Apple Silicon
-# --target: Which stage of the multi-stage Dockerfile to build
-# --build-arg: Makes package installations non-interactive (no prompts)
-# --load: Saves the image locally so you can test it with "docker run"
-# -t: Tags the image with a name that includes the architecture
-docker buildx build \
-    --platform "${PLATFORM}" \
-    --target "${TARGET}" \
-    --build-arg DEBIAN_FRONTEND=noninteractive \
-    --build-arg DEBCONF_NONINTERACTIVE_SEEN=true \
-    --load \
-    -t "${IMAGE_TAG}" \
-    .
+# Enable/disable registry fallback (push/pull via local registry) after tar fallback failure
+ENABLE_REGISTRY_FALLBACK="${ENABLE_REGISTRY_FALLBACK:-1}"
+LOCAL_REGISTRY_NAME="${LOCAL_REGISTRY_NAME:-local-registry}"
+LOCAL_REGISTRY_PORT="${LOCAL_REGISTRY_PORT:-5000}"
+LOCAL_REGISTRY_ADDR="localhost:${LOCAL_REGISTRY_PORT}"
 
-echo "✅ Build completed!"
+echo "🏗️  Building ${TARGET} for ${PLATFORM} (will try up to ${MAX_RETRIES} time(s))..."
+
+# IMAGE OUTPUT MODE (choose how to export the result to avoid large --load streaming crashes)
+# Supported values:
+#   load  - (default legacy path) load into local docker daemon (streams large image; least stable for huge images)
+#   tar   - write legacy docker archive  <image>.tar (not loaded)
+#   oci   - write OCI image layout       <image>.oci (recommended: smaller metadata, no daemon streaming) [default]
+#   push  - push directly to registry (requires PUSH_TAG env var)
+#   none  - build and keep result only in build cache (no export)
+IMAGE_OUTPUT="${IMAGE_OUTPUT:-oci}"
+PUSH_TAG="${PUSH_TAG:-}"  # e.g. ghcr.io/you/base-container:latest
+
+if [ "$IMAGE_OUTPUT" != "load" ]; then
+        echo "🚫 Skipping native docker build / --load export because IMAGE_OUTPUT=$IMAGE_OUTPUT"
+        restart_docker_if_needed() {
+                if ! docker info >/dev/null 2>&1; then
+                        echo "⚠️  Docker daemon unavailable. Attempting restart..."
+                        if [ -x /usr/local/share/docker-init.sh ]; then
+                                sudo /usr/local/share/docker-init.sh || true
+                                sleep 4
+                        fi
+                fi
+        }
+        ensure_builder() {
+                local builder_name=${BUILDX_BUILDER_NAME:-resilient-builder}
+                if ! docker buildx inspect "$builder_name" >/dev/null 2>&1; then
+                        echo "🧱 Creating buildx builder '$builder_name' (driver=docker-container)..."
+                        docker buildx create --name "$builder_name" --driver docker-container --use >/dev/null 2>&1 || {
+                                echo "⚠️  Could not create dedicated builder; falling back to default." >&2
+                        }
+                else
+                        docker buildx use "$builder_name" >/dev/null 2>&1 || true
+                fi
+        }
+        ensure_builder
+
+        # Decide output flags
+        output_flags=()
+        artifact_path=""
+        case "$IMAGE_OUTPUT" in
+                tar)
+                        artifact_path="${IMAGE_TAG}.tar"
+                        output_flags=(--output type=docker,dest="${artifact_path}") ;;
+                oci)
+                        artifact_path="${IMAGE_TAG}.oci"
+                        output_flags=(--output type=oci,dest="${artifact_path}") ;;
+                push)
+                        if [ -z "$PUSH_TAG" ]; then
+                                echo "❌ IMAGE_OUTPUT=push but PUSH_TAG not set." >&2
+                                exit 1
+                        fi
+                        output_flags=(--push -t "$PUSH_TAG") ;;
+                none)
+                        echo "ℹ️  IMAGE_OUTPUT=none: no export, build for cache only." ;;
+                *)
+                        echo "❌ Unknown IMAGE_OUTPUT='$IMAGE_OUTPUT'" >&2; exit 1 ;;
+        esac
+
+        attempt=1
+        while :; do
+                echo "🔁 Build attempt ${attempt}/${MAX_RETRIES} (buildx output: ${IMAGE_OUTPUT})..."
+                set +e
+                docker buildx build \
+                        --platform "${PLATFORM}" \
+                        --target "${TARGET}" \
+                        --build-arg DEBIAN_FRONTEND=noninteractive \
+                        --build-arg DEBCONF_NONINTERACTIVE_SEEN=true \
+                        --cache-from type=local,src="${BUILDX_CACHE_DIR}" \
+                        --cache-to type=local,dest="${BUILDX_CACHE_DIR}",mode=max \
+                        -t "${IMAGE_TAG}" \
+                        "${output_flags[@]}" \
+                        .
+                status=$?
+                set -e
+                if [ $status -eq 0 ]; then
+                        echo "✅ Build succeeded (mode=${IMAGE_OUTPUT})."
+                        if [ -n "$artifact_path" ] && [ -f "$artifact_path" ]; then
+                                echo "📦 Artifact: $artifact_path"
+                        fi
+                        if [ "$IMAGE_OUTPUT" = push ]; then
+                                echo "🚀 Pushed: $PUSH_TAG"
+                        fi
+                        echo "Done."; exit 0
+                fi
+                echo "❌ Attempt ${attempt} failed (status ${status})."
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                        echo "⏱️  Retrying after ${SLEEP_BETWEEN}s..."
+                        sleep "$SLEEP_BETWEEN"; attempt=$((attempt+1))
+                else
+                        echo "🛑 Exhausted retries." >&2; exit $status
+                fi
+        done
+fi
+
+host_arch=$(uname -m)
+case "$host_arch" in
+    x86_64) host_arch_norm=amd64 ;;
+    aarch64|arm64) host_arch_norm=arm64 ;;
+    *) host_arch_norm="$host_arch" ;;
+esac
+
+# Native fast path: if host arch matches target and not forced to use buildx, use classic docker build (more stable than buildx --load for huge images)
+NATIVE_FAST_PATH="${NATIVE_FAST_PATH:-1}"         # set to 0 to disable
+FORCE_BUILDX="${FORCE_BUILDX:-0}"
+
+restart_docker_if_needed() {
+        if ! docker info >/dev/null 2>&1; then
+                echo "⚠️  Docker daemon unavailable. Attempting restart..."
+                if [ -x /usr/local/share/docker-init.sh ]; then
+                        sudo /usr/local/share/docker-init.sh || true
+                        # give it a moment
+                        sleep 4
+                fi
+                local tries=1
+                while ! docker info >/dev/null 2>&1; do
+                        if [ $tries -ge 5 ]; then
+                                echo "❌ Docker daemon failed to start after ${tries} attempts." >&2
+                                return 1
+                        fi
+                        echo "⏳ Waiting for docker daemon (attempt ${tries})..."
+                        sleep 3
+                        tries=$((tries+1))
+                done
+                echo "✅ Docker daemon restored."
+        fi
+}
+
+ensure_builder() {
+        local builder_name=${BUILDX_BUILDER_NAME:-resilient-builder}
+        if ! docker buildx inspect "$builder_name" >/dev/null 2>&1; then
+                echo "🧱 Creating buildx builder '$builder_name' (driver=docker-container)..."
+                docker buildx create --name "$builder_name" --driver docker-container --use >/dev/null 2>&1 || {
+                        echo "⚠️  Could not create dedicated builder; falling back to default." >&2
+                }
+        else
+                docker buildx use "$builder_name" >/dev/null 2>&1 || true
+        fi
+}
+
+if [ "$host_arch_norm" = "amd64" ] && [[ "$PLATFORM" == *"amd64"* ]] && [ "$NATIVE_FAST_PATH" = "1" ] && [ "$FORCE_BUILDX" != "1" ]; then
+        echo "⚡ Native host arch matches target (host=$host_arch_norm). Using plain 'docker build' fast path (set NATIVE_FAST_PATH=0 to disable)."
+        restart_docker_if_needed || true
+        if docker build \
+                        --target "${TARGET}" \
+                        --build-arg DEBIAN_FRONTEND=noninteractive \
+                        --build-arg DEBCONF_NONINTERACTIVE_SEEN=true \
+                        -t "${IMAGE_TAG}" .; then
+                echo "✅ Native docker build succeeded."
+                fast_path_success=1
+        else
+                echo "⚠️  Native docker build failed; falling back to buildx strategy." >&2
+        fi
+fi
+
+if [ -z "${fast_path_success:-}" ]; then
+        ensure_builder
+        attempt=1
+    while :; do
+            echo "🔁 Build attempt ${attempt}/${MAX_RETRIES} (buildx --load)..."
+                        restart_docker_if_needed || { echo "❌ Docker daemon unavailable; aborting."; exit 2; }
+
+            set +e
+            docker buildx build \
+                            --platform "${PLATFORM}" \
+                            --target "${TARGET}" \
+                            --build-arg DEBIAN_FRONTEND=noninteractive \
+                            --build-arg DEBCONF_NONINTERACTIVE_SEEN=true \
+                            --cache-from type=local,src="${BUILDX_CACHE_DIR}" \
+                            --cache-to type=local,dest="${BUILDX_CACHE_DIR}",mode=max \
+                            --load \
+                            -t "${IMAGE_TAG}" \
+                            .
+            status=$?
+            set -e
+
+            if [ $status -eq 0 ]; then
+                    echo "✅ Build completed successfully on attempt ${attempt}."
+                    break
+            fi
+
+            echo "❌ Build attempt ${attempt} failed with status ${status}."
+
+            if [ $attempt -lt $MAX_RETRIES ]; then
+                    echo "⏱️  Will retry after ${SLEEP_BETWEEN}s..."
+                    docker system df || true
+                    sleep "${SLEEP_BETWEEN}"
+                    attempt=$((attempt + 1))
+            else
+                                        echo "🛑 Exhausted buildx retries (${MAX_RETRIES}). Initiating tar fallback export..."
+                                                                TAR_FILE="${IMAGE_TAG}.tar"
+                                        echo "📦 Fallback: building to local tar archive ($TAR_FILE) using buildx --output type=docker"
+                                        restart_docker_if_needed || { echo "❌ Docker daemon unavailable before tar fallback."; exit 3; }
+                                        # Use same builder (cache reuse). Avoid --load; use export to tar.
+                                        set +e
+                                        docker buildx build \
+                                                --platform "${PLATFORM}" \
+                                                --target "${TARGET}" \
+                                                --build-arg DEBIAN_FRONTEND=noninteractive \
+                                                --build-arg DEBCONF_NONINTERACTIVE_SEEN=true \
+                                                                        --cache-from type=local,src="${BUILDX_CACHE_DIR}" \
+                                                                        --cache-to type=local,dest="${BUILDX_CACHE_DIR}",mode=max \
+                                                --output type=docker,dest="${TAR_FILE}" \
+                                                -t "${IMAGE_TAG}" .
+                                        tar_status=$?
+                                        set -e
+                                        if [ $tar_status -eq 0 ]; then
+                                                echo "📥 Loading tar archive into daemon..."
+                                                restart_docker_if_needed || true
+                                                if docker load -i "${TAR_FILE}"; then
+                                                        rm -f "${TAR_FILE}" || true
+                                                        echo "✅ Tar fallback succeeded."
+                                                        break
+                                                else
+                                                        echo "⚠️  docker load failed; tar file retained at ${TAR_FILE} for manual load." >&2
+                                                        exit 4
+                                                fi
+                                                                else
+                                                                        echo "❌ Tar fallback build failed (status $tar_status)." >&2
+                                                                        if [ "$ENABLE_REGISTRY_FALLBACK" = "1" ]; then
+                                                                                echo "🚢 Attempting registry push/pull fallback..."
+                                                                                restart_docker_if_needed || { echo "❌ Docker daemon unavailable before registry fallback."; exit 5; }
+                                                                                # Ensure local registry
+                                                                                if ! docker ps --format '{{.Names}}' | grep -q "^${LOCAL_REGISTRY_NAME}$"; then
+                                                                                        if docker ps -a --format '{{.Names}}' | grep -q "^${LOCAL_REGISTRY_NAME}$"; then
+                                                                                                docker start "${LOCAL_REGISTRY_NAME}" >/dev/null 2>&1 || true
+                                                                                        else
+                                                                                                echo "🗄️  Starting local registry '${LOCAL_REGISTRY_NAME}' on port ${LOCAL_REGISTRY_PORT}..."
+                                                                                                docker run -d -p ${LOCAL_REGISTRY_PORT}:5000 --restart=always --name "${LOCAL_REGISTRY_NAME}" registry:2 >/dev/null 2>&1 || true
+                                                                                        fi
+                                                                                        sleep 2
+                                                                                fi
+                                                                                REGISTRY_TAG="${LOCAL_REGISTRY_ADDR}/${IMAGE_TAG}:latest"
+                                                                                echo "🔄 Building & pushing to local registry as ${REGISTRY_TAG} ..."
+                                                                                set +e
+                                                                                docker buildx build \
+                                                                                        --platform "${PLATFORM}" \
+                                                                                        --target "${TARGET}" \
+                                                                                        --build-arg DEBIAN_FRONTEND=noninteractive \
+                                                                                        --build-arg DEBCONF_NONINTERACTIVE_SEEN=true \
+                                                                                        --cache-from type=local,src="${BUILDX_CACHE_DIR}" \
+                                                                                        --cache-to type=local,dest="${BUILDX_CACHE_DIR}",mode=max \
+                                                                                        --push \
+                                                                                        -t "${REGISTRY_TAG}" .
+                                                                                reg_status=$?
+                                                                                set -e
+                                                                                if [ $reg_status -eq 0 ]; then
+                                                                                        echo "📥 Pulling from local registry..."
+                                                                                        if docker pull "${REGISTRY_TAG}" && docker tag "${REGISTRY_TAG}" "${IMAGE_TAG}"; then
+                                                                                                echo "✅ Registry fallback succeeded (image tagged '${IMAGE_TAG}')."
+                                                                                                break
+                                                                                        else
+                                                                                                echo "❌ Pull/tag from registry failed." >&2
+                                                                                                exit 6
+                                                                                        fi
+                                                                                else
+                                                                                        echo "❌ Registry fallback build/push failed (status $reg_status). Aborting." >&2
+                                                                                        exit $status
+                                                                                fi
+                                                                        else
+                                                                                echo "❌ Tar fallback failed and registry fallback disabled. Aborting." >&2
+                                                                                exit $status
+                                                                        fi
+                                                                fi
+            fi
+    done
+fi
+
 echo "🐳 Image: ${IMAGE_TAG}"
 echo "🧪 Test with: docker run --rm ${IMAGE_TAG} uname -m"
-# WHY TEST WITH uname -m: This shows the architecture inside the container.
-# Should show "x86_64" even when running on Apple Silicon, proving emulation works.
+echo "(Expect: x86_64)"
