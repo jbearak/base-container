@@ -41,6 +41,12 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/base-container
+  # Shared tag patterns (Phase 3 code quality): kept in one place for both metadata steps
+  METADATA_TAG_SPEC: |
+    type=ref,event=branch
+    type=ref,event=pr
+    type=sha,prefix={{branch}}-
+    type=raw,value=latest,enable={{is_default_branch}}
 
 jobs:
   build-r-container:
@@ -65,17 +71,12 @@ jobs:
           echo "Listing repositories (expect success if auth OK)"
           echo "(Non-fatal if empty)"
           docker image ls | head -5
-
       - name: Generate metadata (r-container)
         id: meta_r
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+          tags: ${{ env.METADATA_TAG_SPEC }}
 
       - name: Build and push r-container
         uses: docker/build-push-action@v5
@@ -119,17 +120,12 @@ jobs:
         run: |
           set -euo pipefail
           docker image ls | head -5
-
       - name: Generate metadata (full-container)
         id: meta_full
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+          tags: ${{ env.METADATA_TAG_SPEC }}
 
       - name: Build and push full-container
         uses: docker/build-push-action@v5
