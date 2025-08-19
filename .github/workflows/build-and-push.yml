@@ -59,6 +59,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify registry auth
+        run: |
+          set -euo pipefail
+          echo "Listing repositories (expect success if auth OK)"
+          echo "(Non-fatal if empty)"
+          docker image ls | head -5
 
       - name: Generate metadata (r-container)
         id: meta_r
@@ -84,6 +90,11 @@ jobs:
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
           cache-to: >-
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r,mode=max
+      - name: Sanity check r-container manifest
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:r-${{ steps.meta_r.outputs.version }} > /dev/null
+          echo "r-container multi-arch manifest present."
 
   build-full-container:
     # Phase 0: full-container requires >=30 GB RAM for Docker build (large layers, LaTeX + tooling install)
@@ -104,6 +115,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify registry auth
+        run: |
+          set -euo pipefail
+          docker image ls | head -5
 
       - name: Generate metadata (full-container)
         id: meta_full
@@ -130,3 +145,14 @@ jobs:
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full
           cache-to: >-
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full,mode=max
+      - name: Sanity check full-container latest tag (if default branch)
+        if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        run: |
+          set -euo pipefail
+          # Pick one of the produced tags to validate presence (latest may not always be enabled)
+          echo "Inspecting produced tags:"
+          echo "${{ steps.meta_full.outputs.tags }}" | tr ' ' '\n' | head -5
+          primary_tag=$(echo "${{ steps.meta_full.outputs.tags }}" | tr ' ' '\n' | head -1)
+          echo "Validating manifest for $primary_tag"
+          docker buildx imagetools inspect "$primary_tag" > /dev/null
+          echo "Full-container manifest validated."
