@@ -10,19 +10,23 @@ Best practice for local development is a single, obvious entry point. This repos
 
 Examples:
 ```bash
-# Host arch builds
+# Host arch builds (loads into local daemon)
 ./build.sh full-container
 ./build.sh r-container
 
-# Force amd64 (e.g. on Apple Silicon)
+# Force amd64 (e.g. on Apple Silicon). Auto-selects safer artifact (OCI) unless --output specified.
 ./build.sh --amd64 full-container
+
+# Explicit output modes (avoid daemon load / for CI cache or transfer)
+./build.sh --output oci r-container      # creates r-container-<arch>.oci/ (OCI layout dir)
+./build.sh --output tar full-container   # creates full-container-<arch>.tar
 
 # Disable cache / show R package logs / adjust parallel jobs
 ./build.sh --no-cache full-container
 R_BUILD_JOBS=4 ./build.sh r-container
 ./build.sh --debug r-container
 
-# Export a tarball for offline transfer
+# Deprecated shortcut (equivalent to --output tar)
 EXPORT_TAR=1 ./build.sh r-container
 ```
 
@@ -32,7 +36,7 @@ Local image naming remains explicit for clarity:
 
 Multi-platform (both amd64 + arm64) publishing is still handled by `push-to-ghcr.sh -a`, which uses buildx to create and push a manifest list. This keeps the everyday developer loop fast and simple while still supporting distribution.
 
-Deprecated (removed) legacy scripts: `build-container.sh`, `build-amd64.sh`, and `build-all.sh` have been retired to reduce cognitive load and maintenance surface. Their functionality is fully covered by `build.sh` + `push-to-ghcr.sh`.
+Deprecated (removed) legacy scripts: `build-container.sh`, `build-amd64.sh`, and `build-all.sh` have been retired to reduce cognitive load and maintenance surface. Their functionality is fully covered by `build.sh` + `push-to-ghcr.sh`. Physical script files will be removed shortly; do not rely on them.
 #### Cache & Variants Examples
 ```bash
 # Standard host build
@@ -47,23 +51,25 @@ Deprecated (removed) legacy scripts: `build-container.sh`, `build-amd64.sh`, and
 # Increase R compile parallelism
 R_BUILD_JOBS=6 ./build.sh full-container
 
-# Export tar after build
-EXPORT_TAR=1 ./build.sh r-container
+# Artifact outputs
+./build.sh --output oci r-container   # directory (no daemon needed)
+./build.sh --output tar full-container
+EXPORT_TAR=1 ./build.sh r-container   # legacy env (same as --output tar)
 ```
 ### Build commands
 
 ```bash
-# Full development environment (host arch)
+# Full development environment (host arch, load)
 ./build.sh full-container
 
-# CI-focused R image (host arch)
+# CI-focused R image (host arch, load)
 ./build.sh r-container
 
-# Cross-build for linux/amd64 (only invokes buildx if host != amd64)
+# Cross-build for linux/amd64 (auto artifact unless --output load specified)
 ./build.sh --amd64 full-container
-./build.sh --amd64 r-container
+./build.sh --amd64 --output load r-container   # force load (requires daemon + buildx)
 ```
-To verify images you can run lightweight checks manually, e.g.:
+To verify loaded images you can run lightweight checks manually, e.g.:
 ```bash
 docker run --rm full-container-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/') R -q -e 'cat("R ok\n")'
 ```
@@ -376,8 +382,6 @@ The container uses [pak](https://pak.r-lib.org/) for R package management, provi
 # Build without cache (clean build)
 ./build.sh --no-cache full-container
 
-# Clean local cache
-./cache-helper.sh clean
 ```
 
 #### Available Build Targets
@@ -454,18 +458,23 @@ This approach provides clarity during development while following Docker best pr
 
 ### Build Options
 
-All build scripts support additional options:
+`build.sh` options (summary):
+--amd64 (force platform), --no-cache, --debug, --output load|oci|tar, --no-fallback
 
+Additional env vars:
+R_BUILD_JOBS (parallel R builds, default 2), TAG_SUFFIX, EXPORT_TAR=1 (deprecated alias for --output tar), AUTO_INSTALL_BUILDKIT=1 (permit apt install of buildkit), BUILDKIT_HOST (remote buildkit), BUILDKIT_PROGRESS=plain.
+
+Examples:
 ```bash
-# Build with testing
 ./build.sh --debug full-container
-
-# Build without cache
 ./build.sh --no-cache full-container
-
-# Build with registry cache
-./build.sh --amd64 full-container   # (cache sharing now handled automatically by Docker)
+./build.sh --output oci r-container              # produce portable artifact
+./build.sh --amd64 --output tar full-container   # cross-build exported tar
+./build.sh --no-fallback --output oci r-container # fail instead of buildctl fallback if docker unavailable
+AUTO_INSTALL_BUILDKIT=1 ./build.sh --output oci r-container # allow auto install of buildkit if needed
 ```
+
+Daemonless fallback: If the Docker daemon isn't reachable (or buildx missing for artifact export) and `--no-fallback` is not set, the script will attempt a rootless `buildctl build`. Use `--no-fallback` to force failure (e.g., in CI enforcing daemon usage) or specify `BUILDKIT_HOST` to target a remote buildkitd.
 
 ### Publishing Images
 
@@ -510,39 +519,28 @@ This repository now supports two top-level container targets optimized for diffe
   - Working directory: /workspaces
   - Best for: local development, VS Code Dev Containers
 
-### Build commands
+### Command recap
 
-- **Build both containers for host platform (default):**
-  ```bash
-  ./build-container.sh
-  ```
+```bash
+# Host arch (load)
+./build.sh full-container
+./build.sh r-container
 
-- **Build specific container for host platform:**
-  ```bash
-  ./build-container.sh --r-container      # Lightweight R image (CI optimized)
-  ./build-container.sh --full-container   # Complete dev environment
-  ```
+# Cross (auto artifact)
+./build.sh --amd64 r-container
 
-- **Build for AMD64 platform (cross-platform):**
-  ```bash
-  ./build-amd64.sh r-container            # R container for AMD64
-  ./build-amd64.sh full-container         # Full container for AMD64
-  ```
+# Explicit artifact outputs
+./build.sh --output oci r-container
+./build.sh --output tar full-container
 
-- **Build all combinations (2 architectures × 2 targets = 4 images):**
-  ```bash
-  # (Legacy multi-build script removed; invoke desired builds explicitly)
-  ./build.sh full-container
-  ./build.sh r-container
-  ```
+# Force load cross-build (requires daemon + buildx)
+./build.sh --amd64 --output load r-container
 
-- **Push to GitHub Container Registry:**
-  ```bash
-  ./push-to-ghcr.sh                       # Push both containers (host platform only)
-  ./push-to-ghcr.sh -t full-container     # Push specific container (host platform only)
-  ```
-  
-  **Note**: By default, `push-to-ghcr.sh` pushes existing local images (host platform only). The `-a` flag builds and pushes multi-architecture images in one step (cannot be separated due to Docker buildx limitations).
+# Publish multi-arch
+./push-to-ghcr.sh -a
+```
+
+**Note**: `push-to-ghcr.sh -a` performs a fresh multi-platform build & push; prior artifact exports are not reused for manifest creation.
 
 Add `--test` to run non-interactive verification inside the built image.
 

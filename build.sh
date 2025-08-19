@@ -33,19 +33,23 @@ succ(){ echo -e "${GREEN}[OK]${NC} $*"; }
 usage(){ cat <<EOF
 Unified build script (docker + rootless buildctl fallback)
 
-Usage: $0 [--amd64] [--no-cache] [--debug] [--output load|oci|tar] <full-container|r-container>
+Usage: $0 [--amd64] [--no-cache] [--debug] [--no-fallback] [--output load|oci|tar] <full-container|r-container>
 
 Options:
   --amd64              Build linux/amd64 (uses buildx or buildctl if cross-arch).
   --no-cache           Disable Docker build cache.
   --debug              Pass DEBUG_PACKAGES=true (verbose R package logs) to Dockerfile.
   --output <mode>      load (default), oci (directory), tar (docker archive). Load requires daemon.
+  --no-fallback        Do NOT attempt buildctl rootless fallback; fail instead.
   -h, --help           Show help.
 
 Environment:
   R_BUILD_JOBS (default 2)  Parallel R package compile jobs.
   TAG_SUFFIX                Extra suffix for local tag (e.g. -dev).
   EXPORT_TAR=1              Deprecated shortcut for --output tar.
+  AUTO_INSTALL_BUILDKIT=1   Permit script to apt-get install buildkit if buildctl missing.
+  BUILDKIT_HOST             Remote buildkit address (e.g. tcp://buildkitd:1234) for buildctl.
+  BUILDKIT_PROGRESS=plain   Control buildctl progress output (default fancy, plain better for CI logs).
 
 Examples:
   ./build.sh full-container
@@ -60,6 +64,8 @@ FORCE_AMD64=false
 NO_CACHE=false
 DEBUG_PACKAGES=false
 OUTPUT_MODE=load
+OUTPUT_EXPLICIT=false
+FALLBACK_ENABLED=true
 TARGET=""
 
 while [[ $# -gt 0 ]]; do
@@ -67,7 +73,8 @@ while [[ $# -gt 0 ]]; do
   --amd64) FORCE_AMD64=true; shift;;
   --no-cache) NO_CACHE=true; shift;;
   --debug) DEBUG_PACKAGES=true; shift;;
-  --output) OUTPUT_MODE="$2"; shift 2;;
+  --output) OUTPUT_MODE="$2"; OUTPUT_EXPLICIT=true; shift 2;;
+  --no-fallback) FALLBACK_ENABLED=false; shift;;
     -h|--help) usage; exit 0;;
     full-container|r-container) TARGET="$1"; shift;;
     *) err "Unknown argument: $1"; usage; exit 1;;
@@ -101,10 +108,7 @@ case "$OUTPUT_MODE" in
   *) err "Invalid --output '$OUTPUT_MODE' (expected load|oci|tar)"; exit 1;;
 esac
 
-if [ "$OUTPUT_MODE" = load ] && ! $DOCKER_DAEMON_UP; then
-  err "--output load requires a running docker daemon. Use --output oci or --output tar instead."; exit 3
-fi
-
+# Detect host arch & potential cross-build BEFORE enforcing daemon requirement so we can auto-switch output.
 HOST_ARCH_RAW="$(uname -m)"
 case "$HOST_ARCH_RAW" in
   x86_64) HOST_ARCH=amd64;;
@@ -119,14 +123,26 @@ else
   BUILD_PLATFORM="linux/${HOST_ARCH}"
 fi
 
-# Decide if buildx is needed
+# Decide if buildx is needed (host != target amd64 implies cross-build)
 NEED_BUILDX=false
 if [ "$BUILD_PLATFORM" = "linux/amd64" ] && [ "$HOST_ARCH" != "amd64" ]; then
   NEED_BUILDX=true
 fi
 
-if $NEED_BUILDX && $DOCKER_DAEMON_UP && ! docker buildx version >/dev/null 2>&1; then
-  err "buildx required for cross-building to amd64 from $HOST_ARCH. Install Docker buildx or use --output oci with buildctl."; exit 5
+# Auto-adjust default output mode for cross-builds (only if user did not explicitly choose one)
+if $NEED_BUILDX && ! $OUTPUT_EXPLICIT && [ "$OUTPUT_MODE" = load ]; then
+  OUTPUT_MODE=oci
+  info "Auto-selected --output oci for cross-build (safer than load; choose --output load to override)."
+fi
+
+# Now that OUTPUT_MODE may have been auto-adjusted, enforce daemon requirement for load mode.
+if [ "$OUTPUT_MODE" = load ] && ! $DOCKER_DAEMON_UP; then
+  err "--output load requires a running docker daemon. Use --output oci or --output tar instead."; exit 3
+fi
+
+# If we still need buildx (cross-build) ensure it's present when using docker path
+if $NEED_BUILDX && $DOCKER_DAEMON_UP && [ "$OUTPUT_MODE" = load ] && ! docker buildx version >/dev/null 2>&1; then
+  err "buildx required for cross-building to amd64 from $HOST_ARCH. Install Docker buildx or specify --output oci (non-load artifact)."; exit 5
 fi
 
 R_BUILD_JOBS="${R_BUILD_JOBS:-2}"
@@ -173,31 +189,48 @@ else
   fi
   if ! $DOCKER_DAEMON_UP; then
     # Rootless buildctl path
-    if ! command -v buildctl >/dev/null 2>&1; then
-      warn "buildctl not found; attempting installation (apt)."
-      if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update -qq && sudo apt-get install -y -qq buildkit || true
+      if ! $FALLBACK_ENABLED; then
+        err "Fallback disabled (--no-fallback). Aborting because docker daemon/load path unavailable."; exit 6
       fi
-    fi
-    if ! command -v buildctl >/dev/null 2>&1; then
-      err "buildctl unavailable. Cannot proceed without docker daemon. Install buildkit or start Docker."; exit 6
-    fi
+      if ! command -v buildctl >/dev/null 2>&1; then
+        if [ "${AUTO_INSTALL_BUILDKIT:-0}" = "1" ]; then
+          warn "buildctl missing; AUTO_INSTALL_BUILDKIT=1 set – attempting apt-get install buildkit"
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq buildkit || true
+          else
+            warn "apt-get not available; cannot auto-install buildkit"
+          fi
+        else
+          warn "buildctl not found. Set AUTO_INSTALL_BUILDKIT=1 to allow auto-install (Debian/Ubuntu) or install manually."
+        fi
+      fi
+      if ! command -v buildctl >/dev/null 2>&1; then
+        err "buildctl unavailable. Cannot proceed without docker daemon. Install buildkit or start Docker."; exit 6
+      fi
     case "$OUTPUT_MODE" in
       oci) OUT_DEST="${IMAGE_TAG}.oci"; OUT_SPEC="type=oci,dest=${OUT_DEST}";;
       tar) OUT_DEST="${IMAGE_TAG}.tar"; OUT_SPEC="type=docker,dest=${OUT_DEST}";;
       load) err "Internal error: load mode should not reach buildctl path"; exit 7;;
     esac
     info "Using rootless buildctl (output=$OUTPUT_MODE)"
-    FRONTEND_OPTS=( --opt target="$TARGET" --opt platform="$BUILD_PLATFORM" )
+      FRONTEND_OPTS=( --opt target="$TARGET" --opt platform="$BUILD_PLATFORM" )
     FRONTEND_OPTS+=( --opt build-arg:R_BUILD_JOBS="$R_BUILD_JOBS" )
     $DEBUG_PACKAGES && FRONTEND_OPTS+=( --opt build-arg:DEBUG_PACKAGES=true ) || true
     $NO_CACHE && FRONTEND_OPTS+=( --no-cache ) || true
-    time buildctl build \
-      --frontend=dockerfile.v0 \
-      --local context=. \
-      --local dockerfile=. \
-      "${FRONTEND_OPTS[@]}" \
-      --output "$OUT_SPEC"
+      if [ -n "${BUILDKIT_HOST:-}" ]; then
+        info "Using remote buildkit host: $BUILDKIT_HOST"
+        BUILDKIT_ADDR_FLAG=( --addr "$BUILDKIT_HOST" )
+      else
+        BUILDKIT_ADDR_FLAG=()
+      fi
+      : "${BUILDKIT_PROGRESS:=auto}"  # allow override
+      time buildctl "${BUILDKIT_ADDR_FLAG[@]}" build \
+          --frontend=dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=. \
+          "${FRONTEND_OPTS[@]}" \
+          --progress "$BUILDKIT_PROGRESS" \
+          --output "$OUT_SPEC"
     if [ -f "$OUT_DEST" ]; then succ "Exported $OUT_DEST"; else err "Expected artifact $OUT_DEST not found"; exit 8; fi
   fi
 fi

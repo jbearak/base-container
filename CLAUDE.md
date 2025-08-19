@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Note: A concise summary for generic AI assistants (Copilot, etc.) lives in `copilot-instructions.md`. This file is the authoritative, detailed reference; update both when changing assistant guidance.
+
 This file provides guidance to AI assistants when working with code in this repository.
 
 ## Repository Overview
@@ -8,24 +10,43 @@ Multi-stage R development container for research environments. Primary focus is 
 
 ## Build Commands
 
-**Container Build (primary workflow):**
-- Full container: `./build-container.sh --full-container`
-- R-only container: `./build-container.sh --r-container` 
-- Stage-specific builds: `./build-container.sh --base` | `--base-nvim` | `--base-nvim-vscode` | `--base-nvim-vscode-tex` | `--base-nvim-vscode-tex-pandoc` | `--base-nvim-vscode-tex-pandoc-plus`
-- Debug R package builds: `./build-container.sh --full-container --debug`
-- No cache: add `--no-cache` to any build command
-- Build with tests: add `--test` to any build command
-- Build multiple targets: `./build-all.sh`
-- AMD64 specific: `./build-amd64.sh`
+**Primary workflow (`build.sh`):**
+- Full container (host arch, load): `./build.sh full-container`
+- R-only container (host arch, load): `./build.sh r-container`
+- Cross-build amd64 (host != amd64 -> auto artifact): `./build.sh --amd64 full-container`
+- Explicit artifact outputs (daemonless): `./build.sh --output oci r-container` | `./build.sh --output tar full-container`
+- Force load on cross-build (requires daemon+buildx): `./build.sh --amd64 --output load r-container`
+- Debug R packages: `./build.sh --debug full-container`
+- No cache: `./build.sh --no-cache r-container`
+- Parallel jobs: `R_BUILD_JOBS=6 ./build.sh full-container`
+- Disable fallback: `./build.sh --no-fallback --output oci r-container`
 
-**Additional Build Scripts:**
-- `cache-helper.sh`: Docker build cache management
-- `push-to-ghcr.sh`: Push images to GitHub Container Registry
+**Output modes:**
+- `load` (default) – load into local Docker daemon (requires daemon; auto-changed to `oci` for cross-build if daemonless)
+- `oci` – directory `<tag>.oci/` (portable, fast unpack)
+- `tar` – Docker save archive `<tag>.tar` (widely compatible)
 
-**Test Commands:**
-- Built-in test suite: `./build-container.sh --full-container --test`
-- Pandoc comprehensive tests: `./test_pandoc.sh` (run inside container)
-- One-off container check: `docker run --rm <image>:<tag> <cmd>`
+**Fallback behavior (docker → buildx → buildctl):**
+1. If Docker CLI + daemon reachable and `--output load`: use classic `docker build` (same-arch) or `docker buildx build --load` (cross-arch)
+2. If output is artifact (`oci|tar`) and buildx available: `docker buildx build --output ...`
+3. If docker/buildx unavailable or daemon down AND fallback enabled: attempt rootless `buildctl build` (local or remote via `BUILDKIT_HOST`)
+4. If `--no-fallback` specified and daemon path not viable: fail fast with guidance.
+
+**Additional script:**
+- `push-to-ghcr.sh` – Builds (multi-arch when `-a`) & pushes to GHCR.
+
+**Key environment variables:**
+- `R_BUILD_JOBS` (default 2) – Parallel R compilation
+- `TAG_SUFFIX` – Append suffix to local image tag
+- `EXPORT_TAR=1` – Deprecated (alias for `--output tar`)
+- `AUTO_INSTALL_BUILDKIT=1` – Allow apt-get install of buildkit when falling back
+- `BUILDKIT_HOST` – Remote buildkit endpoint (e.g. `tcp://host:1234`)
+- `BUILDKIT_PROGRESS=plain` – Simplify buildctl output (good for CI logs)
+
+**Quick validation / tests:**
+- Smoke test R: `docker run --rm full-container-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') R -q -e 'cat("R OK\n")'`
+- Pandoc tests (inside full container): `./test_pandoc.sh`
+- One-off command: `docker run --rm r-container-<arch> R -q -e 'sessionInfo()'`
 
 **Lint/Format:**
 - Dockerfile: `hadolint Dockerfile`
@@ -87,13 +108,10 @@ Multi-stage R development container for research environments. Primary focus is 
 ## File Structure
 
 - `Dockerfile`: Multi-stage container definition
-- `build-container.sh`: Main build script with stage options
-- `build-all.sh`: Build multiple container targets
-- `build-amd64.sh`: AMD64-specific build script
+- `build.sh`: Unified build script (replaces legacy build-* scripts)
 - `install_r_packages.sh`: Optimized R package installer with fallback
 - `R_packages.txt`: List of CRAN packages (268 total)
 - `test_pandoc.sh`: Comprehensive Pandoc testing suite
-- `cache-helper.sh`: Docker build cache management
 - `push-to-ghcr.sh`: GitHub Container Registry deployment
 - `dotfiles/`: User configuration (tmux, Neovim, R profile, lintr)
 - `.devcontainer/`: VS Code development container configuration
