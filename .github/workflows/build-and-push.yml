@@ -96,6 +96,12 @@ jobs:
           set -euo pipefail
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:r-${{ steps.meta_r.outputs.version }} > /dev/null
           echo "r-container multi-arch manifest present."
+      - name: Metrics (r-container)
+        run: |
+          set -euo pipefail
+          echo "Collecting size metrics for r-container tags" 
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:r-${{ steps.meta_r.outputs.version }} \
+            | grep -E "(Name:|Size:)" || true
 
   build-full-container:
     # Phase 0: full-container requires >=30 GB RAM for Docker build (large layers, LaTeX + tooling install)
@@ -152,3 +158,11 @@ jobs:
           echo "Validating manifest for $primary_tag"
           docker buildx imagetools inspect "$primary_tag" > /dev/null
           echo "Full-container manifest validated."
+      - name: Metrics (full-container)
+        run: |
+          set -euo pipefail
+          echo "Collecting size metrics for full-container produced tags" 
+          for tag in $(echo "${{ steps.meta_full.outputs.tags }}"); do
+            echo "-- $tag"
+            docker buildx imagetools inspect "$tag" | grep -E "(Name:|Size:)" || true
+          done
