@@ -30,6 +30,24 @@ R_BUILD_JOBS=4 ./build.sh r-container
 EXPORT_TAR=1 ./build.sh r-container
 ```
 
+### Resource Requirements (Memory / CPU)
+
+Building the `full-container` target is resource intensive. Peak resident memory during the heavy R package + toolchain compilation stages routinely approaches ~24 GB. To build reliably you should use a machine (or Codespace/VM) with **≥ 32 GB RAM** (or substantial swap configured). On hosts with less memory the build may fail with OOM kills (often mid-way through R package compilation or LaTeX/Haskell layers).
+
+Summary:
+* Recommended for `full-container`: 32 GB RAM (peak ~24 GB, some headroom for kernel + Docker overhead).
+* Minimum practical (with swap + reduced parallelism): ~16 GB RAM + 8–16 GB fast swap + `R_BUILD_JOBS=1`.
+* `r-container` (slim CI image) typically fits comfortably within 6–8 GB RAM.
+
+If you must build on a smaller machine:
+1. Export artifacts instead of loading: `./build.sh --output oci full-container` (slightly less daemon pressure).
+2. Reduce concurrency: `R_BUILD_JOBS=1 MAKEFLAGS=-j1 ./build.sh full-container`.
+3. Add temporary swap (Linux): create a 8–16 GB swapfile before building.
+4. Pre-build intermediate layers (e.g. a stage without full R package set) or build the `r-container` for day-to-day work.
+5. Offload to CI or a beefier remote builder (remote buildkit via `BUILDKIT_HOST`).
+
+If you only need R + a minimal toolchain for CI, prefer `r-container` to avoid these requirements.
+
 Local image naming remains explicit for clarity:
 * `full-container-arm64`, `full-container-amd64`
 * `r-container-arm64`, `r-container-amd64`

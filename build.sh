@@ -50,6 +50,7 @@ Environment:
   AUTO_INSTALL_BUILDKIT=1   Permit script to apt-get install buildkit if buildctl missing.
   BUILDKIT_HOST             Remote buildkit address (e.g. tcp://buildkitd:1234) for buildctl.
   BUILDKIT_PROGRESS=plain   Control buildctl progress output (default fancy, plain better for CI logs).
+  IGNORE_RAM_CHECK=1        Override 32GB RAM requirement for full-container (use with caution).
 
 Examples:
   ./build.sh full-container
@@ -83,6 +84,24 @@ done
 
 if [ -z "$TARGET" ]; then
   usage; err "Target required"; exit 1
+fi
+
+# Check memory requirements for full-container
+if [ "$TARGET" = "full-container" ]; then
+  if [ -r /proc/meminfo ]; then
+    TOTAL_RAM_KB=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
+    TOTAL_RAM_GB=$((TOTAL_RAM_KB / 1024 / 1024))
+    if [ "$TOTAL_RAM_GB" -lt 32 ]; then
+      err "full-container requires ≥32GB RAM (detected: ${TOTAL_RAM_GB}GB). Use r-container instead or add swap."
+      err "Override with IGNORE_RAM_CHECK=1 if you have sufficient swap configured."
+      if [ "${IGNORE_RAM_CHECK:-0}" != "1" ]; then
+        exit 2
+      fi
+      warn "IGNORE_RAM_CHECK=1 set; proceeding despite insufficient RAM (may OOM)"
+    fi
+  else
+    warn "Cannot detect system RAM (/proc/meminfo unavailable); proceeding with full-container build"
+  fi
 fi
 
 if [ "${EXPORT_TAR:-0}" = "1" ] && [ "$OUTPUT_MODE" = load ]; then
