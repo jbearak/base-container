@@ -29,4 +29,4 @@ Minimal guidance for AI assistants. For comprehensive details (targets, stages, 
 3. Update `README.md` if user-facing behavior changes.
 4. Reflect any assistant-facing process changes back into `CLAUDE.md`.
 
-Refer to `CLAUDE.md` for deep architecture notes and style guidelines. 
+Refer to `CLAUDE.md` for deep architecture notes and style guidelines.
