@@ -68,6 +68,8 @@ OUTPUT_MODE=load
 OUTPUT_EXPLICIT=false
 FALLBACK_ENABLED=true
 TARGET=""
+OUT_SPEC=""   # predeclare to satisfy set -u; only populated for oci/tar outputs
+OUT_DEST=""   # ditto
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
