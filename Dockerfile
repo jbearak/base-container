@@ -1225,7 +1225,17 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
     export R_COMPILE_PKGS=1; \
     export R_KEEP_PKG_SOURCE=yes; \
     export TMPDIR=/tmp/R-pkg-cache; \
-    /tmp/install_r_packages.sh
+     # Exclude btw on AMD64 -- it doesn't compile, even in a native container (on codespaces)
+    EXCLUDE_LIST=""; \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+        EXCLUDE_LIST="btw"; \
+        echo "Note: Excluding btw, httpgd, colorout packages for AMD64 build"; \
+    fi; \
+    if [ "$DEBUG_PACKAGES" = "true" ]; then \
+        /tmp/install_r_packages.sh --debug --exclude-packages "$EXCLUDE_LIST"; \
+    else \
+        /tmp/install_r_packages.sh --exclude-packages "$EXCLUDE_LIST"; \
+    fi
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
@@ -1237,7 +1247,6 @@ RUN --mount=type=cache,target=/root/.cache/R/pak \
 # This significantly speeds up container startup since extensions don't need to
 # be downloaded and installed each time the container starts.
 # ---------------------------------------------------------------------------
-
 FROM base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak AS base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode
 
 # Switch to the 'me' user for VS Code server installation
