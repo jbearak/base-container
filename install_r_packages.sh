@@ -58,25 +58,35 @@ install_packages_with_pak() {
     local packages_list="$1"
     echo "📦 Installing CRAN packages with pak..."
     
-    # Create R script for pak installation with minimal output unless there's an error
+    # Create R script for pak installation with proper binary configuration
     local r_script="
     library(pak)
     
-    # Configure pak to prefer binary packages on AMD64
+    # Configure pak and R for binary packages on AMD64
     if (R.Version()\$arch == 'x86_64' && R.Version()\$os == 'linux-gnu') {
-        # Set pak to prefer binary packages
-        tryCatch({
-            pak::pak_config_set(dependencies = TRUE)
-            pak::pak_config_set(ask = FALSE)
-            cat('Configured pak dependencies and ask settings\\n')
-        }, error = function(e) {
-            cat('Warning: pak_config_set not available in this pak version\\n')
-        })
+        # The key is to use the correct repository that provides binary packages
+        # PPM (Posit Package Manager) provides binary packages for Linux
+        ppm_url <- 'https://packagemanager.rstudio.com/cran/__linux__/jammy/latest'
         
-        # Force binary package preference
+        # Configure R options for binary packages
         options(pkgType = 'binary')
         options(install.packages.compile.from.source = 'never')
-        cat('Configured pak to prefer binary packages on AMD64\\n')
+        options(repos = c(
+            CRAN = ppm_url,
+            RSPM = ppm_url
+        ))
+        
+        # Configure pak basic settings
+        tryCatch({
+            pak::pak_config_set('dependencies', TRUE)
+            pak::pak_config_set('ask', FALSE)
+            cat('Configured pak basic settings\\n')
+        }, error = function(e) {
+            cat('Warning: pak basic configuration failed\\n')
+        })
+        
+        cat('Configured for binary packages on AMD64 using PPM\\n')
+        cat('Repository URL:', ppm_url, '\\n')
     }
     
     # Read packages from file
@@ -85,7 +95,8 @@ install_packages_with_pak() {
     
     cat('Installing', length(packages), 'packages with pak...\\n')
     cat('Platform:', R.Version()\$arch, R.Version()\$os, '\\n')
-    cat('Package type preference:', getOption('pkgType'), '\\n')
+    cat('R Package type preference:', getOption('pkgType'), '\\n')
+    cat('Repository:', getOption('repos')[['CRAN']], '\\n')
     
     # Install packages with pak - suppress verbose output unless there's an error
     tryCatch({
@@ -96,7 +107,6 @@ install_packages_with_pak() {
         cat('PAK_ERROR:', conditionMessage(e), '\\n')
         cat('Platform details for debugging:\\n')
         cat('Compile from source setting:', getOption('install.packages.compile.from.source'), '\\n')
-        cat('Repositories:', paste(names(getOption('repos')), getOption('repos'), sep='=', collapse=', '), '\\n')
         quit(status = 1)
     })
     "
@@ -109,7 +119,7 @@ install_packages_with_pak() {
     if [[ $pak_exit_code -eq 0 ]]; then
         echo "✅ CRAN packages installed successfully with pak"
         # Show just the success message from pak output
-        echo "$pak_output" | grep -E "(SUCCESS|Configured|Installing.*packages)"
+        echo "$pak_output" | grep -E "(SUCCESS|Configured|Installing.*packages|Repository:)"
         installed_count=$((installed_count + total_packages))
         return 0
     else
@@ -125,6 +135,16 @@ install_package_individual() {
     local package="$1"
     local r_command="
     pkg <- '$package'
+    
+    # Configure binary packages on AMD64 (same as Dockerfile configuration)
+    if (R.Version()\$arch == 'x86_64' && R.Version()\$os == 'linux-gnu') {
+        options(pkgType = 'binary')
+        options(install.packages.compile.from.source = 'never')
+        options(repos = c(
+            CRAN = 'https://cloud.r-project.org/',
+            RSPM = 'https://packagemanager.rstudio.com/all/latest'
+        ))
+    }
     
     if (require(pkg, character.only=TRUE, quietly=TRUE)) { 
         cat('ALREADY_INSTALLED\\n') 
@@ -167,7 +187,13 @@ install_package_individual() {
     
     # Extract platform info first to show in the progress line
     local platform_info
-    platform_info=$(echo "cat(R.Version()\$arch, R.Version()\$os, 'pkgType=', getOption('pkgType'))" | R --slave --no-restore 2>/dev/null | tr '\n' ' ')
+    platform_info=$(echo "
+    # Configure binary packages on AMD64
+    if (R.Version()\$arch == 'x86_64' && R.Version()\$os == 'linux-gnu') {
+        options(pkgType = 'binary')
+    }
+    cat(R.Version()\$arch, R.Version()\$os, 'pkgType=', getOption('pkgType'))
+    " | R --slave --no-restore 2>/dev/null | tr '\n' ' ')
     
     echo "📦 Installing $package [$platform_info]..."
     package_start=$(date +%s)
