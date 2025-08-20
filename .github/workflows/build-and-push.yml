@@ -71,13 +71,15 @@ jobs:
           echo "Listing repositories (expect success if auth OK)"
           echo "(Non-fatal if empty)"
           docker image ls | head -5
-      - name: Generate metadata (r-container)
+      - name: Docker meta (r-container)
         id: meta_r
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: ${{ env.METADATA_TAG_SPEC }}
-
+          # Add prefix to all tags
+          flavor: |
+            prefix=r-
       - name: Build and push r-container
         uses: docker/build-push-action@v5
         with:
@@ -85,8 +87,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           target: r-container
           push: true
-          tags: >-
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:r-${{ steps.meta_r.outputs.version }}
+          tags: ${{ steps.meta_r.outputs.tags }}
+          labels: ${{ steps.meta_r.outputs.labels }}
           cache-from: >-
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
           cache-to: >-
@@ -94,20 +96,24 @@ jobs:
       - name: Sanity check r-container manifest
         run: |
           set -euo pipefail
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:r-${{ steps.meta_r.outputs.version }} > /dev/null
+          # Pick one of the produced tags to validate presence
+          primary_tag=$(echo "${{ steps.meta_r.outputs.tags }}" | tr ' ' '\n' | head -1)
+          echo "Validating manifest for $primary_tag"
+          docker buildx imagetools inspect "$primary_tag" > /dev/null
           echo "r-container multi-arch manifest present."
       - name: Metrics (r-container)
         run: |
           set -euo pipefail
-          echo "Collecting size metrics for r-container tags" 
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:r-${{ steps.meta_r.outputs.version }} \
-            | grep -E "(Name:|Size:)" || true
-
+          echo "Collecting size metrics for r-container tags"
+          for tag in $(echo "${{ steps.meta_r.outputs.tags }}"); do
+            echo "-- $tag"
+            docker buildx imagetools inspect "$tag" | grep -E "(Name:|Size:)" || true
+          done
   build-full-container:
+    needs: build-r-container
     # Phase 0: full-container requires >=30 GB RAM for Docker build (large layers, LaTeX + tooling install)
     # Assumption: a self-hosted runner labeled 'self-hosted, linux, x64, large' provides >=32 GB RAM.
     # If such a runner is not yet configured, this job will queue indefinitely; configure runner before merging.
-    needs: build-r-container
     runs-on: ${{ fromJson(vars.LARGE_RUNNER_LABELS) }}
     steps:
       - name: Checkout
@@ -143,6 +149,8 @@ jobs:
           tags: ${{ steps.meta_full.outputs.tags }}
           labels: ${{ steps.meta_full.outputs.labels }}
           cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full
           cache-to: >-
