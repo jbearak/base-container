@@ -26,8 +26,8 @@ set -e  # Exit if any command fails
 # Configuration - these variables control where images are pushed
 # WHY WE USE VARIABLES: This makes it easy to change settings without editing the whole script
 REGISTRY="ghcr.io"  # GitHub Container Registry URL
-# Auto-detect repository owner from environment (works in GitHub Actions) or default to jbearak
-REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-jbearak}}"
+# Auto-detect repository owner from environment (works in GitHub Actions) or default to Guttmacher
+REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-Guttmacher}}"
 REPOSITORY="${REPO_OWNER}/base-container"  # Full repository path: ghcr.io/username/base-container
 DEFAULT_TAG="latest"  # Default tag if none specified
 DEFAULT_TARGET="full-container"  # Default container type if none specified
