@@ -63,7 +63,7 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS base
 # These labels provide metadata about the container image and link it to
 # the source repository for GitHub Container Registry integration
 # ---------------------------------------------------------------------------
-LABEL org.opencontainers.image.source="https://github.com/jbearak/base-container"
+LABEL org.opencontainers.image.source="https://github.com/Guttmacher/base-container"
 LABEL org.opencontainers.image.description="Multi-stage R development environment with Neovim, VS Code, LaTeX, and Pandoc"
 LABEL org.opencontainers.image.licenses="MIT"
 

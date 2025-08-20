@@ -171,7 +171,7 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
 ```jsonc
 {
   "name": "Base Container Development Environment",
-  "image": "ghcr.io/jbearak/base-container:latest",
+  "image": "ghcr.io/Guttmacher/base-container:latest",
 
   // For Colima on macOS, use vz for correct UID/GID mapping:
   // colima stop; colima delete; colima start --vm-type vz --mount-type virtiofs
@@ -213,7 +213,7 @@ Build a custom image that extends the base container with Q CLI pre-installed:
 1. **Create a Dockerfile** named `Dockerfile.amazonq` in your project root:
    ```dockerfile
    # Dockerfile for Base Container with Amazon Q CLI pre-installed
-   FROM ghcr.io/jbearak/base-container:latest
+   FROM ghcr.io/Guttmacher/base-container:latest
 
    # Switch to the me user for installation
    USER me
@@ -278,7 +278,7 @@ If you prefer not to build a custom image, you can install Q CLI on container st
    ```jsonc
    {
      "name": "Base Container with Amazon Q CLI",
-     "image": "ghcr.io/jbearak/base-container:latest",
+     "image": "ghcr.io/Guttmacher/base-container:latest",
      "remoteUser": "me",
      "updateRemoteUserUID": true,
      "mounts": [
@@ -321,7 +321,7 @@ PROJECT_NAME=$(basename "$(pwd)")
 # Start persistent container
 docker run -d --name "$PROJECT_NAME" --hostname "$PROJECT_NAME" --restart unless-stopped --init \
   -v "$(pwd)":"/workspaces/$PROJECT_NAME" -w "/workspaces/$PROJECT_NAME" \
-  ghcr.io/jbearak/base-container:latest sleep infinity
+  ghcr.io/Guttmacher/base-container:latest sleep infinity
 
 # Work in tmux
 docker exec -it "$PROJECT_NAME" bash -lc "tmux new -A -s '$PROJECT_NAME'"
@@ -432,7 +432,7 @@ The container uses a non-root user named "me" for security and compatibility:
 docker --version && docker buildx version
 
 # pak system check
-docker run --rm ghcr.io/jbearak/base-container:latest R -e 'library(pak); pak::pak_config()'
+docker run --rm ghcr.io/Guttmacher/base-container:latest R -e 'library(pak); pak::pak_config()'
 
 # Check cache usage
 docker system df
@@ -567,7 +567,7 @@ Reference the published image in your project's .devcontainer/devcontainer.json:
 
 {
   "name": "base-container (full)",
-  "image": "ghcr.io/jbearak/full-container:full-container",
+  "image": "ghcr.io/Guttmacher/full-container:full-container",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/project,type=bind",
   "workspaceFolder": "/workspaces/project"
 }
