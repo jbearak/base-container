@@ -1,3 +1,95 @@
+### Building the Container
+
+### Simplified Build Workflow (Unified Script)
+
+Best practice for local development is a single, obvious entry point. This repository now uses `build.sh` for all local single-architecture builds.
+
+`build.sh` builds exactly one target (`full-container` or `r-container`) for either:
+* The host architecture (default)
+* linux/amd64 explicitly (`--amd64`), using buildx only when cross-building is required
+
+Examples:
+```bash
+# Host arch builds (loads into local daemon)
+./build.sh full-container
+./build.sh r-container
+
+# Force amd64 (e.g. on Apple Silicon). Auto-selects safer artifact (OCI) unless --output specified.
+./build.sh --amd64 full-container
+
+# Explicit output modes (avoid daemon load / for CI cache or transfer)
+./build.sh --output oci r-container      # creates r-container-<arch>.oci/ (OCI layout dir)
+./build.sh --output tar full-container   # creates full-container-<arch>.tar
+
+# Disable cache / show R package logs / adjust parallel jobs
+./build.sh --no-cache full-container
+R_BUILD_JOBS=4 ./build.sh r-container
+./build.sh --debug r-container
+
+# Deprecated shortcut (equivalent to --output tar)
+EXPORT_TAR=1 ./build.sh r-container
+```
+
+### Resource Requirements (Memory / CPU)
+
+Building the `full-container` target is resource intensive. Peak resident memory during the heavy R package + toolchain compilation stages routinely approaches ~24 GB. To build reliably you should use a machine (or Codespace/VM) with **≥ 32 GB RAM** (or substantial swap configured). On hosts with less memory the build may fail with OOM kills (often mid-way through R package compilation or LaTeX/Haskell layers).
+
+Summary:
+* Recommended for `full-container`: 32 GB RAM (peak ~24 GB, some headroom for kernel + Docker overhead).
+* Minimum practical (with swap + reduced parallelism): ~16 GB RAM + 8–16 GB fast swap + `R_BUILD_JOBS=1`.
+* `r-container` (slim CI image) typically fits comfortably within 6–8 GB RAM.
+
+If you must build on a smaller machine:
+1. Export artifacts instead of loading: `./build.sh --output oci full-container` (slightly less daemon pressure).
+2. Reduce concurrency: `R_BUILD_JOBS=1 MAKEFLAGS=-j1 ./build.sh full-container`.
+3. Add temporary swap (Linux): create a 8–16 GB swapfile before building.
+4. Pre-build intermediate layers (e.g. a stage without full R package set) or build the `r-container` for day-to-day work.
+5. Offload to CI or a beefier remote builder (remote buildkit via `BUILDKIT_HOST`).
+
+If you only need R + a minimal toolchain for CI, prefer `r-container` to avoid these requirements.
+
+Local image naming remains explicit for clarity:
+* `full-container-arm64`, `full-container-amd64`
+* `r-container-arm64`, `r-container-amd64`
+
+Multi-platform (both amd64 + arm64) publishing is still handled by `push-to-ghcr.sh -a`, which uses buildx to create and push a manifest list. This keeps the everyday developer loop fast and simple while still supporting distribution.
+
+#### Cache & Variants Examples
+```bash
+# Standard host build
+./build.sh full-container
+
+# Cross-build for amd64 from arm64 host
+./build.sh --amd64 r-container
+
+# Clean build (no cache)
+./build.sh --no-cache full-container
+
+# Increase R compile parallelism
+R_BUILD_JOBS=6 ./build.sh full-container
+
+# Artifact outputs
+./build.sh --output oci r-container   # directory (no daemon needed)
+./build.sh --output tar full-container
+EXPORT_TAR=1 ./build.sh r-container   # legacy env (same as --output tar)
+```
+### Build commands
+
+```bash
+# Full development environment (host arch, load)
+./build.sh full-container
+
+# CI-focused R image (host arch, load)
+./build.sh r-container
+
+# Cross-build for linux/amd64 (auto artifact unless --output load specified)
+./build.sh --amd64 full-container
+./build.sh --amd64 --output load r-container   # force load (requires daemon + buildx)
+```
+To verify loaded images you can run lightweight checks manually, e.g.:
+```bash
+docker run --rm full-container-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/') R -q -e 'cat("R ok\n")'
+```
 # Base Container
 
 A comprehensive, reproducible development environment using VS Code dev containers. Includes essential tools for data science, development, and document preparation.
@@ -71,10 +163,15 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
 
 1. **Create `.devcontainer/devcontainer.json` in your project:**
 
+  ### Note on Legacy Scripts
+
+  Older resilient build scripts have been removed in favor of a single, minimal `build.sh`. For cross-architecture distribution use `push-to-ghcr.sh -a` which performs a purpose-built multi-platform build. This separation keeps local iterations fast and maintenance surface small.
+
+
 ```jsonc
 {
   "name": "Base Container Development Environment",
-  "image": "ghcr.io/jbearak/base-container:latest",
+  "image": "ghcr.io/Guttmacher/base-container:latest",
 
   // For Colima on macOS, use vz for correct UID/GID mapping:
   // colima stop; colima delete; colima start --vm-type vz --mount-type virtiofs
@@ -116,7 +213,7 @@ Build a custom image that extends the base container with Q CLI pre-installed:
 1. **Create a Dockerfile** named `Dockerfile.amazonq` in your project root:
    ```dockerfile
    # Dockerfile for Base Container with Amazon Q CLI pre-installed
-   FROM ghcr.io/jbearak/base-container:latest
+   FROM ghcr.io/Guttmacher/base-container:latest
 
    # Switch to the me user for installation
    USER me
@@ -181,7 +278,7 @@ If you prefer not to build a custom image, you can install Q CLI on container st
    ```jsonc
    {
      "name": "Base Container with Amazon Q CLI",
-     "image": "ghcr.io/jbearak/base-container:latest",
+     "image": "ghcr.io/Guttmacher/base-container:latest",
      "remoteUser": "me",
      "updateRemoteUserUID": true,
      "mounts": [
@@ -224,7 +321,7 @@ PROJECT_NAME=$(basename "$(pwd)")
 # Start persistent container
 docker run -d --name "$PROJECT_NAME" --hostname "$PROJECT_NAME" --restart unless-stopped --init \
   -v "$(pwd)":"/workspaces/$PROJECT_NAME" -w "/workspaces/$PROJECT_NAME" \
-  ghcr.io/jbearak/base-container:latest sleep infinity
+  ghcr.io/Guttmacher/base-container:latest sleep infinity
 
 # Work in tmux
 docker exec -it "$PROJECT_NAME" bash -lc "tmux new -A -s '$PROJECT_NAME'"
@@ -265,13 +362,15 @@ If you use VS Code to create the container, add the following to your `.devconta
 
 ### Architecture
 
-The container uses a multi-stage build process optimized for Docker layer caching:
+The container uses a multi-stage build process optimized for Docker layer caching and supports both AMD64 and ARM64 architectures:
 
 - **Base Stage**: Ubuntu 24.04 with essential system packages
 - **Development Tools**: Neovim with plugins, Git, shell utilities  
 - **Document Preparation**: LaTeX, Pandoc, Haskell (for pandoc-crossref)
 - **Programming Languages**: Python 3.13, R 4.5+ with comprehensive packages
 - **VS Code Integration**: VS Code Server with extensions (positioned last for optimal caching)
+
+**Platform Detection**: The Dockerfile automatically detects the target architecture using `dpkg --print-architecture` and installs architecture-specific binaries for tools like Go, Neovim, Hadolint, and others.
 
 **Optimization Strategy**: Expensive, stable components (LaTeX, Haskell) are built early, while frequently updated components (VS Code extensions) are positioned late to minimize rebuild times when making changes.
 
@@ -285,20 +384,21 @@ The container uses [pak](https://pak.r-lib.org/) for R package management, provi
 
 #### Cache Usage Examples
 ```bash
-# Build with local cache only (default)
-./build-container.sh --full
+# Build with local cache only (default) - host platform
+./build.sh full-container
+
+# Build for AMD64 platform (cross-platform on Apple Silicon)
+./build.sh --amd64 full-container
 
 # Build using registry cache
-./build-container.sh --full --cache-from ghcr.io/jbearak/base-container
+./build.sh --amd64 full-container   # cross-build example
 
 # Build and update registry cache
-./build-container.sh --full --cache-from-to ghcr.io/jbearak/base-container
+./build.sh r-container
 
 # Build without cache (clean build)
-./build-container.sh --full --no-cache
+./build.sh --no-cache full-container
 
-# Clean local cache
-./cache-helper.sh clean
 ```
 
 #### Available Build Targets
@@ -332,19 +432,92 @@ The container uses a non-root user named "me" for security and compatibility:
 docker --version && docker buildx version
 
 # pak system check
-docker run --rm ghcr.io/jbearak/base-container:latest R -e 'library(pak); pak::pak_config()'
+docker run --rm ghcr.io/Guttmacher/base-container:latest R -e 'library(pak); pak::pak_config()'
 
 # Check cache usage
 docker system df
 
 # Check pak cache (if container exists)
-docker run --rm base-container:pak R -e 'pak::cache_summary()' 2>/dev/null || echo "Container not built yet"
+docker run --rm full-container-arm64 R -e 'pak::cache_summary()' 2>/dev/null || echo "Container not built yet"
 ```
 
 ## License
 
 Licensed under the [MIT License](LICENSE.txt).
 
+
+## Building the Container
+
+### Platform Support
+
+Single-arch development builds use `build.sh` (host arch by default, `--amd64` to force). Multi-arch publishing is handled by `push-to-ghcr.sh -a`.
+
+Examples:
+```bash
+./build.sh full-container          # host arch
+./build.sh r-container             # host arch
+./build.sh --amd64 full-container  # cross-build (if host != amd64)
+```
+
+### Image Naming Convention
+
+The build scripts use different naming conventions for local vs. registry images:
+
+- **Local Images**: Include architecture suffix for clarity
+  - Examples: `full-container-arm64`, `r-container-amd64`, `base-amd64`
+  - Built locally by: `./build.sh`
+
+- **Registry Images**: Use multi-architecture manifests (no arch suffix)
+  - Examples: `ghcr.io/user/repo:latest` (contains both amd64 and arm64)
+  - Created by: `./push-to-ghcr.sh -a` or `docker buildx build --push`
+
+This approach provides clarity during development while following Docker best practices for distribution.
+
+### Build Options
+
+`build.sh` options (summary):
+--amd64 (force platform), --no-cache, --debug, --output load|oci|tar, --no-fallback
+
+Additional env vars:
+R_BUILD_JOBS (parallel R builds, default 2), TAG_SUFFIX, EXPORT_TAR=1 (deprecated alias for --output tar), AUTO_INSTALL_BUILDKIT=1 (permit apt install of buildkit), BUILDKIT_HOST (remote buildkit), BUILDKIT_PROGRESS=plain.
+
+Examples:
+```bash
+./build.sh --debug full-container
+./build.sh --no-cache full-container
+./build.sh --output oci r-container              # produce portable artifact
+./build.sh --amd64 --output tar full-container   # cross-build exported tar
+./build.sh --no-fallback --output oci r-container # fail instead of buildctl fallback if docker unavailable
+AUTO_INSTALL_BUILDKIT=1 ./build.sh --output oci r-container # allow auto install of buildkit if needed
+```
+
+Daemonless fallback: If the Docker daemon isn't reachable (or buildx missing for artifact export) and `--no-fallback` is not set, the script will attempt a rootless `buildctl build`. Use `--no-fallback` to force failure (e.g., in CI enforcing daemon usage) or specify `BUILDKIT_HOST` to target a remote buildkitd.
+
+### Publishing Images
+
+- **`./push-to-ghcr.sh`** - Pushes images to GitHub Container Registry (GHCR)
+  - **Platform**: Only pushes images built for the **host platform** (default)
+  - **Multi-platform**: Use `-a` flag to build and push both AMD64 and ARM64
+  - **Default**: Pushes both `full-container` and `r-container` if available locally
+  - **Examples**:
+    ```bash
+    ./push-to-ghcr.sh                       # Push both containers (host platform)
+    ./push-to-ghcr.sh -a                    # Build and push both containers (both platforms)
+    ./push-to-ghcr.sh -t full-container     # Push specific container (host platform)
+    ./push-to-ghcr.sh -a -t r-container     # Build and push R container (both platforms)
+    ./push-to-ghcr.sh -b -t r-container     # Build and push R container (host platform)
+    ```
+
+- **Multi-architecture publishing**:
+  ```bash
+  # Option 1: Use the -a flag (recommended)
+  ./push-to-ghcr.sh -a                     # Build and push both platforms
+  ./push-to-ghcr.sh -a -t full-container   # Build and push specific target, both platforms
+  
+  # Option 2: Use docker buildx directly
+  docker buildx build --platform linux/amd64,linux/arm64 \
+    --target full-container --push -t ghcr.io/user/repo:latest .
+  ```
 
 ## Multiple container targets
 
@@ -363,17 +536,30 @@ This repository now supports two top-level container targets optimized for diffe
   - Working directory: /workspaces
   - Best for: local development, VS Code Dev Containers
 
-### Build commands
+### Command recap
 
-- Build the lightweight R image (CI optimized):
+```bash
+# Host arch (load)
+./build.sh full-container
+./build.sh r-container
 
-  ./build-container.sh --r-container
+# Cross (auto artifact)
+./build.sh --amd64 r-container
 
-- Build the complete dev environment:
+# Explicit artifact outputs
+./build.sh --output oci r-container
+./build.sh --output tar full-container
 
-  ./build-container.sh --full-container
+# Force load cross-build (requires daemon + buildx)
+./build.sh --amd64 --output load r-container
 
-Add --test to run non-interactive verification inside the built image.
+# Publish multi-arch
+./push-to-ghcr.sh -a
+```
+
+**Note**: `push-to-ghcr.sh -a` performs a fresh multi-platform build & push; prior artifact exports are not reused for manifest creation.
+
+Add `--test` to run non-interactive verification inside the built image.
 
 ### Using in VS Code Dev Containers (full-container)
 
@@ -381,7 +567,7 @@ Reference the published image in your project's .devcontainer/devcontainer.json:
 
 {
   "name": "base-container (full)",
-  "image": "ghcr.io/jbearak/full-container:full-container",
+  "image": "ghcr.io/Guttmacher/full-container:full-container",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/project,type=bind",
   "workspaceFolder": "/workspaces/project"
 }

@@ -56,7 +56,7 @@ list_cache() {
 warm_cache() {
     local target="$1"
     echo "🔥 Warming cache for target: $target"
-    ./build-container.sh --${target} --cache-from-to "${REGISTRY}"
+    ./build.sh "${target}"
     echo "✅ Cache warmed for target: $target"
 }
 
