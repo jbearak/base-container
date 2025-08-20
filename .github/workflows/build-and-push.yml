@@ -1,13 +1,16 @@
+---
 name: Build and Push Containers
 
-on:
+"on":
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'Dockerfile'
-      - 'build.sh'
+      - 'build-container.sh'
       - 'R_packages.txt'
       - 'install_r_packages.sh'
+      - 'r-shell-config'
+      - 'dotfiles/**'
       - '.github/workflows/build-and-push.yml'
   workflow_dispatch: {}
 
@@ -17,64 +20,265 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/base-container
+  IMAGE_NAME: ${{ github.repository_owner }}/research-stack
+  METADATA_TAG_SPEC: |
+    type=ref,event=branch
+    type=ref,event=pr
+    type=sha,prefix={{branch}}-
+    type=raw,value=latest,enable={{is_default_branch}}
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [ full-container, r-container ]
+  build-r-container:
+    runs-on: ubuntu-24.04-2-cores
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU (multi-arch emulation)
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Derive tags
-        id: meta
+      - name: Verify registry auth
         run: |
-          SHA_TAG=${GITHUB_SHA::12}
-          echo "sha_tag=$SHA_TAG" >> $GITHUB_OUTPUT
-          if [[ $GITHUB_REF == refs/heads/main ]]; then
-            echo "latest_tag=latest" >> $GITHUB_OUTPUT
-          else
-            BRANCH_TAG=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-' )
-            echo "latest_tag=$BRANCH_TAG" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build & Push (multi-arch)
+          set -euo pipefail
+          docker image ls | head -5
+      - name: Docker meta (r-container)
+        id: meta_r
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ env.METADATA_TAG_SPEC }}
+          flavor: |
+            prefix=r-
+      - name: Build and push r-container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          target: r-container
+          push: true
+          tags: ${{ steps.meta_r.outputs.tags }}
+          labels: ${{ steps.meta_r.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r,mode=max
+      - name: Sanity check r-container manifest
         run: |
-          TGT=${{ matrix.target }}
-          # r-container tag variant (r- prefix) else standard
-          if [ "$TGT" = "r-container" ]; then BASE_TAG="r-${{ steps.meta.outputs.latest_tag }}"; SHA_TAG="r-${{ steps.meta.outputs.sha_tag }}"; else BASE_TAG="${{ steps.meta.outputs.latest_tag }}"; SHA_TAG="${{ steps.meta.outputs.sha_tag }}"; fi
-          echo "Building target=$TGT -> tags: $BASE_TAG, $SHA_TAG"
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --target "$TGT" \
-            --build-arg R_BUILD_JOBS=2 \
-            -t ghcr.io/${{ env.IMAGE_NAME }}:$BASE_TAG \
-            -t ghcr.io/${{ env.IMAGE_NAME }}:$SHA_TAG \
-            --push .
-
-      - name: Summary
+          set -euo pipefail
+          primary_tag=$(echo "${{ steps.meta_r.outputs.tags }}" | tr ' ' '\n' | head -1)
+          docker buildx imagetools inspect "$primary_tag" > /dev/null
+      - name: Metrics (r-container)
         run: |
-          echo "Published ${{ matrix.target }} images:"
-          if [ "${{ matrix.target }}" = "r-container" ]; then
-            echo "  ghcr.io/${{ env.IMAGE_NAME }}:r-${{ steps.meta.outputs.latest_tag }}" >> $GITHUB_STEP_SUMMARY
-            echo "  ghcr.io/${{ env.IMAGE_NAME }}:r-${{ steps.meta.outputs.sha_tag }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "  ghcr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.latest_tag }}" >> $GITHUB_STEP_SUMMARY
-            echo "  ghcr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha_tag }}" >> $GITHUB_STEP_SUMMARY
-          fi
+          set -euo pipefail
+          for tag in $(echo "${{ steps.meta_r.outputs.tags }}"); do
+            docker buildx imagetools inspect "$tag" | grep -E "(Name:|Size:)" || true
+          done
+
+  build-full-container:
+    needs: build-r-container
+    runs-on: ubuntu-24.04-8-cores
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify registry auth
+        run: |
+          set -euo pipefail
+          docker image ls | head -5
+      - name: Generate metadata (full-container)
+        id: meta_full
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ env.METADATA_TAG_SPEC }}
+      - name: Build and push full-container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          target: full-container
+          push: true
+          tags: ${{ steps.meta_full.outputs.tags }}
+          labels: ${{ steps.meta_full.outputs.labels }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full,mode=max
+      - name: Sanity check full-container manifest
+        if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        run: |
+          set -euo pipefail
+          primary_tag=$(echo "${{ steps.meta_full.outputs.tags }}" | tr ' ' '\n' | head -1)
+          docker buildx imagetools inspect "$primary_tag" > /dev/null
+      - name: Metrics (full-container)
+        run: |
+          set -euo pipefail
+          for tag in $(echo "${{ steps.meta_full.outputs.tags }}"); do
+            docker buildx imagetools inspect "$tag" | grep -E "(Name:|Size:)" || true
+          done
+                    platforms: linux/amd64,linux/arm64
+                    target: full-container
+                    push: true
+                    tags: ${{ steps.meta_full.outputs.tags }}
+                    labels: ${{ steps.meta_full.outputs.labels }}
+                    cache-from: |
+                      type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r
+                      type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full
+                    cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full,mode=max
+                - name: Sanity check full-container manifest
+                  if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+                  run: |
+                    set -euo pipefail
+                    primary_tag=$(echo "${{ steps.meta_full.outputs.tags }}" | tr ' ' '\n' | head -1)
+                    docker buildx imagetools inspect "$primary_tag" > /dev/null
+                - name: Metrics (full-container)
+                  run: |
+                    set -euo pipefail
+                    for tag in $(echo "${{ steps.meta_full.outputs.tags }}"); do
+                      docker buildx imagetools inspect "$tag" | grep -E "(Name:|Size:)" || true
+                    done
+          target: r-container
+          push: true
+          tags: ${{ steps.meta_r_arm64.outputs.tags }}
+          labels: ${{ steps.meta_r_arm64.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r-arm64
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r-arm64,mode=max
+
+  build-full-container-amd64:
+    if: ${{ vars.ENABLE_NATIVE_ARM64 == 'true' }}
+    needs: build-r-container-amd64
+    runs-on: ubuntu-24.04-8-cores
+    outputs:
+      full_tags_amd64: ${{ steps.meta_full_amd64.outputs.tags }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Metadata (full-container amd64)
+        id: meta_full_amd64
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ env.METADATA_TAG_SPEC }}
+          flavor: |
+            suffix=-amd64
+      - name: Build full-container (amd64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          target: full-container
+          push: true
+          tags: ${{ steps.meta_full_amd64.outputs.tags }}
+          labels: ${{ steps.meta_full_amd64.outputs.labels }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r-amd64
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full-amd64
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full-amd64,mode=max
+
+  build-full-container-arm64:
+    if: ${{ vars.ENABLE_NATIVE_ARM64 == 'true' }}
+    needs: build-r-container-arm64
+    runs-on: ${{ fromJson(vars.ARM64_RUNNER_LABELS) }}
+    outputs:
+      full_tags_arm64: ${{ steps.meta_full_arm64.outputs.tags }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Metadata (full-container arm64)
+        id: meta_full_arm64
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ env.METADATA_TAG_SPEC }}
+          flavor: |
+            suffix=-arm64
+      - name: Build full-container (arm64)
+        uses: docker/build-push-action@v5
+        with:
+            context: .
+            platforms: linux/arm64
+            target: full-container
+            push: true
+            tags: ${{ steps.meta_full_arm64.outputs.tags }}
+            labels: ${{ steps.meta_full_arm64.outputs.labels }}
+            cache-from: |
+              type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-r-arm64
+              type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full-arm64
+            cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-full-arm64,mode=max
+
+  publish-r-container-manifest:
+    if: ${{ vars.ENABLE_NATIVE_ARM64 == 'true' }}
+    needs: [build-r-container-amd64, build-r-container-arm64]
+    runs-on: ubuntu-24.04-2-cores
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assemble multi-arch manifests (r-container)
+        env:
+          AMD64_TAGS: ${{ needs.build-r-container-amd64.outputs.r_tags_amd64 }}
+        run: |
+          set -euo pipefail
+          for amd64 in ${AMD64_TAGS}; do
+            base=${amd64%-amd64}
+            arm64=${base}-arm64
+            echo "Creating manifest: $base -> $amd64 + $arm64"
+            docker buildx imagetools create -t "$base" "$amd64" "$arm64"
+          done
+          echo "Done assembling r-container manifests."
+
+  publish-full-container-manifest:
+    if: ${{ vars.ENABLE_NATIVE_ARM64 == 'true' }}
+    needs: [build-full-container-amd64, build-full-container-arm64]
+    runs-on: ubuntu-24.04-2-cores
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assemble multi-arch manifests (full-container)
+        env:
+          AMD64_TAGS: ${{ needs.build-full-container-amd64.outputs.full_tags_amd64 }}
+        run: |
+          set -euo pipefail
+          for amd64 in ${AMD64_TAGS}; do
+            base=${amd64%-amd64}
+            arm64=${base}-arm64
+            echo "Creating manifest: $base -> $amd64 + $arm64"
+            docker buildx imagetools create -t "$base" "$amd64" "$arm64"
+          done
+          echo "Done assembling full-container manifests."
