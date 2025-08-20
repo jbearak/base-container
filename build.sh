@@ -265,7 +265,7 @@ echo
 if [ "$OUTPUT_MODE" = load ]; then
   succ "Quick test: docker run --rm $IMAGE_TAG uname -m"
   [ "$TARGET" = "r-container" ] && echo "Run R: docker run --rm $IMAGE_TAG R -q -e 'sessionInfo()'" || true
-  echo "Push (single-arch): docker tag $IMAGE_TAG ghcr.io/OWNER/base-container:${TARGET#full-container} && docker push ghcr.io/OWNER/base-container:..."
+  echo "Push (single-arch): docker tag $IMAGE_TAG ghcr.io/OWNER/research-stack:${TARGET#full-container} && docker push ghcr.io/OWNER/research-stack:..."
 else
   succ "Image not loaded (output=$OUTPUT_MODE). Use buildx to load if needed: docker load -i ${OUT_DEST} (tar only)"
   [ "$OUTPUT_MODE" = tar ] && echo "Load later: docker load -i ${OUT_DEST}" || true

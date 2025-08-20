@@ -90,7 +90,7 @@ To verify loaded images you can run lightweight checks manually, e.g.:
 ```bash
 docker run --rm full-container-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/') R -q -e 'cat("R ok\n")'
 ```
-# Base Container
+# Research Stack
 
 A comprehensive, reproducible development environment using VS Code dev containers. Includes essential tools for data science, development, and document preparation.
 
@@ -170,8 +170,8 @@ If you're on macOS, you'll need to install and properly configure Colima for cor
 
 ```jsonc
 {
-  "name": "Base Container Development Environment",
-  "image": "ghcr.io/Guttmacher/base-container:latest",
+"name": "Research Stack Development Environment",
+  "image": "ghcr.io/Guttmacher/research-stack:latest",
 
   // For Colima on macOS, use vz for correct UID/GID mapping:
   // colima stop; colima delete; colima start --vm-type vz --mount-type virtiofs
@@ -212,8 +212,8 @@ Build a custom image that extends the base container with Q CLI pre-installed:
 
 1. **Create a Dockerfile** named `Dockerfile.amazonq` in your project root:
    ```dockerfile
-   # Dockerfile for Base Container with Amazon Q CLI pre-installed
-   FROM ghcr.io/Guttmacher/base-container:latest
+# Dockerfile for Research Stack with Amazon Q CLI pre-installed
+   FROM ghcr.io/Guttmacher/research-stack:latest
 
    # Switch to the me user for installation
    USER me
@@ -241,7 +241,7 @@ Build a custom image that extends the base container with Q CLI pre-installed:
 
 2. **Build your custom image:**
    ```bash
-   docker build -f Dockerfile.amazonq -t my-base-container-amazonq .
+docker build -f Dockerfile.amazonq -t my-research-stack-amazonq .
    ```
 
 3. **Create folders for persistent configuration:**
@@ -252,8 +252,8 @@ Build a custom image that extends the base container with Q CLI pre-installed:
 4. **Update your `.devcontainer/devcontainer.json`:**
    ```jsonc
    {
-     "name": "Base Container with Amazon Q CLI",
-     "image": "my-base-container-amazonq:latest",
+"name": "Research Stack with Amazon Q CLI",
+     "image": "my-research-stack-amazonq:latest",
      "remoteUser": "me",
      "updateRemoteUserUID": true,
      "mounts": [
@@ -277,8 +277,8 @@ If you prefer not to build a custom image, you can install Q CLI on container st
 2. **Update your `.devcontainer/devcontainer.json`:**
    ```jsonc
    {
-     "name": "Base Container with Amazon Q CLI",
-     "image": "ghcr.io/Guttmacher/base-container:latest",
+"name": "Research Stack with Amazon Q CLI",
+    "image": "ghcr.io/Guttmacher/research-stack:latest",
      "remoteUser": "me",
      "updateRemoteUserUID": true,
      "mounts": [
@@ -321,7 +321,7 @@ PROJECT_NAME=$(basename "$(pwd)")
 # Start persistent container
 docker run -d --name "$PROJECT_NAME" --hostname "$PROJECT_NAME" --restart unless-stopped --init \
   -v "$(pwd)":"/workspaces/$PROJECT_NAME" -w "/workspaces/$PROJECT_NAME" \
-  ghcr.io/Guttmacher/base-container:latest sleep infinity
+ghcr.io/Guttmacher/research-stack:latest sleep infinity
 
 # Work in tmux
 docker exec -it "$PROJECT_NAME" bash -lc "tmux new -A -s '$PROJECT_NAME'"
@@ -432,7 +432,7 @@ The container uses a non-root user named "me" for security and compatibility:
 docker --version && docker buildx version
 
 # pak system check
-docker run --rm ghcr.io/Guttmacher/base-container:latest R -e 'library(pak); pak::pak_config()'
+docker run --rm ghcr.io/Guttmacher/research-stack:latest R -e 'library(pak); pak::pak_config()'
 
 # Check cache usage
 docker system df
@@ -566,7 +566,7 @@ Add `--test` to run non-interactive verification inside the built image.
 Reference the published image in your project's .devcontainer/devcontainer.json:
 
 {
-  "name": "base-container (full)",
+  "name": "research-stack (full)",
   "image": "ghcr.io/Guttmacher/full-container:full-container",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/project,type=bind",
   "workspaceFolder": "/workspaces/project"

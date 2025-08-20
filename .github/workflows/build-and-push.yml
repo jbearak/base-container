@@ -20,7 +20,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/base-container
+  IMAGE_NAME: ${{ github.repository_owner }}/research-stack
   METADATA_TAG_SPEC: |
     type=ref,event=branch
     type=ref,event=pr

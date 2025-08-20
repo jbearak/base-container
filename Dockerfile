@@ -1,5 +1,5 @@
 # ===========================================================================
-# MULTI-STAGE R base-container IMAGE - OPTIMIZED FOR DOCKER LAYER CACHING
+# MULTI-STAGE R research-stack IMAGE - OPTIMIZED FOR DOCKER LAYER CACHING
 # ===========================================================================
 # Purpose   : Build a containerized R development environment optimized for
 #             VS Code and the Dev Containers extension.  This Dockerfile uses
@@ -34,18 +34,18 @@
 #
 # Usage     : Use build.sh for user-friendly build commands, or build directly with:
 #             build directly with:
-#               docker build --target base -t base-container:base .
-#               docker build --target base-nvim -t base-container:base-nvim .
-#               docker build --target base-nvim-tex -t base-container:base-nvim-tex .
-#               docker build --target base-nvim-tex-pandoc -t base-container:base-nvim-tex-pandoc .
-#               docker build --target base-nvim-tex-pandoc-haskell -t base-container:base-nvim-tex-pandoc-haskell .
-#               docker build --target base-nvim-tex-pandoc-haskell-crossref -t base-container:base-nvim-tex-pandoc-haskell-crossref .
-#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus .
-#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py .
-#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r .
-#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak .
-#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode -t base-container:base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode .
-#               docker build --target full -t base-container:latest .
+#               docker build --target base -t research-stack:base .
+#               docker build --target base-nvim -t research-stack:base-nvim .
+#               docker build --target base-nvim-tex -t research-stack:base-nvim-tex .
+#               docker build --target base-nvim-tex-pandoc -t research-stack:base-nvim-tex-pandoc .
+#               docker build --target base-nvim-tex-pandoc-haskell -t research-stack:base-nvim-tex-pandoc-haskell .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref -t research-stack:base-nvim-tex-pandoc-haskell-crossref .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus -t research-stack:base-nvim-tex-pandoc-haskell-crossref-plus .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py -t research-stack:base-nvim-tex-pandoc-haskell-crossref-plus-py .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r -t research-stack:base-nvim-tex-pandoc-haskell-crossref-plus-py-r .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak -t research-stack:base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak .
+#               docker build --target base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode -t research-stack:base-nvim-tex-pandoc-haskell-crossref-plus-py-r-pak-vscode .
+#               docker build --target full -t research-stack:latest .
 #
 # ---------------------------------------------------------------------------
 
@@ -63,7 +63,7 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04 AS base
 # These labels provide metadata about the container image and link it to
 # the source repository for GitHub Container Registry integration
 # ---------------------------------------------------------------------------
-LABEL org.opencontainers.image.source="https://github.com/Guttmacher/base-container"
+LABEL org.opencontainers.image.source="https://github.com/Guttmacher/research-stack"
 LABEL org.opencontainers.image.description="Multi-stage R development environment with Neovim, VS Code, LaTeX, and Pandoc"
 LABEL org.opencontainers.image.licenses="MIT"
 

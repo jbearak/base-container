@@ -28,7 +28,7 @@ set -e  # Exit if any command fails
 REGISTRY="ghcr.io"  # GitHub Container Registry URL
 # Auto-detect repository owner from environment (works in GitHub Actions) or default to Guttmacher
 REPO_OWNER="${REPO_OWNER:-${GITHUB_REPOSITORY_OWNER:-Guttmacher}}"
-REPOSITORY="${REPO_OWNER}/base-container"  # Full repository path: ghcr.io/username/base-container
+REPOSITORY="${REPO_OWNER}/research-stack"  # Full repository path: ghcr.io/username/research-stack
 DEFAULT_TAG="latest"  # Default tag if none specified
 DEFAULT_TARGET="full-container"  # Default container type if none specified
 
@@ -185,7 +185,7 @@ push_image() {
     
     # For r-container, use a different tag but same repository
     # WHY: Both containers come from the same source repo, but we want to distinguish them
-    # Result: full-container -> base-container:latest, r-container -> base-container:r-latest
+# Result: full-container -> research-stack:latest, r-container -> research-stack:r-latest
     if [[ "$target" == "r-container" ]]; then
         remote_image="${REGISTRY}/${REPOSITORY}:r-${tag}"
     fi
@@ -391,24 +391,24 @@ print_success "All operations completed successfully!"
 if [[ "$ALL_PLATFORMS" == "true" ]]; then
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushed both containers (multi-platform: linux/amd64,linux/arm64):"
-        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
-        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/research-stack"
+        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/research-stack"
     else
         print_status "Pushed single container (multi-platform: linux/amd64,linux/arm64):"
         local display_tag="${TAG}"
         [[ "$TARGET" == "r-container" ]] && display_tag="r-${TAG}"
-        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/research-stack"
     fi
 else
     if [[ "$PUSH_ALL" == "true" ]]; then
         print_status "Pushed both containers (host platform only):"
-        print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
-        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+print_status "  - full-container:${TAG} → https://github.com/${REPOSITORY}/pkgs/container/research-stack"
+        print_status "  - r-container:r-${TAG} → https://github.com/${REPOSITORY}/pkgs/container/research-stack"
     else
         print_status "Pushed single container (host platform only):"
         local display_tag="${TAG}"
         [[ "$TARGET" == "r-container" ]] && display_tag="r-${TAG}"
-        print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/base-container"
+print_status "  - ${TARGET}:${display_tag} → https://github.com/${REPOSITORY}/pkgs/container/research-stack"
         echo
         print_status "💡 To push both containers, run without -t flag: $0"
         print_status "💡 To push multi-platform images, add -a flag: $0 -a"
